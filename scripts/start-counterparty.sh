@@ -29,15 +29,16 @@ fi
 # Change to counterparty-node directory
 cd "$HOME/counterparty-node" || { log_error "counterparty-node directory not found!"; exit 1; }
 
-# Default profile is mainnet unless specified differently
-PROFILE=${1:-mainnet}
-BUILD_FROM_SOURCE=${2:-false}
-
 # Load config if available
 CONFIG_DIR=${CONFIG_DIR:-$HOME/.counterparty-arm64}
 if [ -f "$CONFIG_DIR/config.env" ]; then
     source "$CONFIG_DIR/config.env"
 fi
+
+# Default profile is mainnet unless specified differently
+# First use argument if provided, then env var, then default to mainnet
+PROFILE=${1:-${NETWORK_PROFILE:-mainnet}}
+BUILD_FROM_SOURCE=${2:-false}
 
 # Ensure the COUNTERPARTY_DOCKER_DATA environment variable is set
 if [ -z "$COUNTERPARTY_DOCKER_DATA" ]; then

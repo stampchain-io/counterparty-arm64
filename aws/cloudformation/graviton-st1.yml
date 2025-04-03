@@ -647,16 +647,46 @@ Resources:
           
           # Update docker-compose.yml to use locally built images instead of pulling from Docker Hub
           echo "Updating docker-compose.yml to use locally built images..."
-          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: counterparty-node-bitcoind:latest/g' ~/counterparty-node/docker-compose.yml"
-          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: counterparty-node-counterparty-core:latest|g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: counterparty-node_bitcoind:latest/g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: counterparty-node_counterparty-core:latest|g' ~/counterparty-node/docker-compose.yml"
           
-          # Build the Docker images first, then start the services
+          # Also update the testnet4 and regtest profiles if they exist
+          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: counterparty-node_bitcoind:latest/g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: counterparty-node_counterparty-core:latest|g' ~/counterparty-node/docker-compose.yml"
+          
+          # Build both Docker images first, then start the services
           echo "Building Docker images for ${NetworkProfile} profile..."
-          su - ubuntu -c "cd ~/counterparty-node && docker compose -f docker-compose.build.yml build bitcoind"
           
-          # Start the service with the selected network profile 
-          echo "Starting Counterparty service with ${NetworkProfile} profile..."
+          # Export the necessary environment variables for the build
+          # Create config directory if it doesn't exist
+          mkdir -p /home/ubuntu/.counterparty-arm64
+          
+          # Create a config.env file for Docker Compose
+          cat > /home/ubuntu/.counterparty-arm64/config.env << EOF
+# Counterparty ARM64 Configuration
+# Generated on $(date)
+COUNTERPARTY_DOCKER_DATA=/bitcoin-data
+COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core
+BITCOIN_VERSION=${BITCOIN_VERSION}
+COUNTERPARTY_BRANCH=${COUNTERPARTY_BRANCH}
+COUNTERPARTY_TAG=${COUNTERPARTY_TAG}
+NETWORK_PROFILE=${NetworkProfile}
+EOF
+          chown -R ubuntu:ubuntu /home/ubuntu/.counterparty-arm64
+          
+          # Now use the environment variables for building
+          su - ubuntu -c "export COUNTERPARTY_DOCKER_DATA=/bitcoin-data && export COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core && cd ~/counterparty-node && docker compose -f docker-compose.build.yml build"
+          
+          # Start both Bitcoin and Counterparty with the selected network profile
+          echo "Starting Bitcoin service with ${NetworkProfile} profile..."
           su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d bitcoind" || echo "Failed to start Bitcoin service, check logs for details"
+          
+          # Copy the check-and-start-counterparty.sh script to monitor Bitcoin sync and start Counterparty
+          cp /home/ubuntu/counterparty-arm64/check-and-start-counterparty.sh /home/ubuntu/
+          chmod +x /home/ubuntu/check-and-start-counterparty.sh
+          
+          # Add to crontab to check every 5 minutes if bitcoin is synced enough to start counterparty
+          (crontab -l 2>/dev/null; echo "*/5 * * * * /home/ubuntu/check-and-start-counterparty.sh >> /home/ubuntu/counterparty-startup.log 2>&1") | crontab -
           
           # Add check-sync-status.sh to cron for hourly checks
           (crontab -l 2>/dev/null; echo "0 * * * * /home/ubuntu/check-sync-status.sh > /home/ubuntu/sync-status.log 2>&1") | crontab -
@@ -712,3 +742,7 @@ Outputs:
   NetworkInfo:
     Description: Information about the selected network profile
     Value: !Sub "Using ${NetworkProfile} network profile"
+    
+  StartupInfo:
+    Description: Information on how to check status and logs
+    Value: !Sub "To check Bitcoin sync status: ssh ubuntu@${CounterpartyInstance.PublicDnsName} '~/check-sync-status.sh'; To check Counterparty logs: ssh ubuntu@${CounterpartyInstance.PublicDnsName} 'docker logs counterparty-core'"

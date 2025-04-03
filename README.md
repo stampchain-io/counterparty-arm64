@@ -68,7 +68,14 @@ This project requires the AWS CLI to be installed and configured with appropriat
 
 3. Start Counterparty
    ```bash
+   # Start with mainnet (default)
+   ~/start-counterparty.sh
+   
+   # Or explicitly specify the network
    ~/start-counterparty.sh mainnet
+   
+   # For testnet
+   ~/start-counterparty.sh testnet3
    ```
 
 ### AWS Deployment
@@ -190,7 +197,7 @@ You can specify which Bitcoin Core version to use:
 scripts/setup.sh --bitcoin-version 26.0
 ```
 
-### Counterparty Version
+### Counterparty Version and Network
 
 You can specify which Counterparty branch or tag to use:
 
@@ -200,6 +207,21 @@ scripts/setup.sh --counterparty-branch develop
 
 # Use a specific tag
 scripts/setup.sh --counterparty-tag v10.10.1
+```
+
+You can also set the default network in your environment file:
+
+```bash
+# In your .env file:
+NETWORK_PROFILE=mainnet  # Default
+# Other options: testnet3, testnet4, regtest
+```
+
+Or specify it when starting the service:
+
+```bash
+# Start with a specific network profile
+~/start-counterparty.sh testnet3
 ```
 
 ### Data Directory
