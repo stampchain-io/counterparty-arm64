@@ -74,7 +74,7 @@ After successful testing, follow these steps to create the GitHub repository:
 
 1. **Initialize Git repository**:
    ```bash
-   cd ***REMOVED***
+   cd /path/to/counterparty-arm64
    git init
    ```
 

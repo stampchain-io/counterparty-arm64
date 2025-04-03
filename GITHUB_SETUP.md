@@ -22,7 +22,7 @@ This repository uses a `.env` file to store AWS-specific configuration that shou
 
 ```bash
 # Navigate to the project directory
-cd ***REMOVED***
+cd /path/to/counterparty-arm64
 
 # Initialize a new git repository
 git init
