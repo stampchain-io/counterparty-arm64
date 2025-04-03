@@ -224,17 +224,34 @@ Resources:
           FromPort: 8332
           ToPort: 8332
           CidrIp: !Ref YourIp
-        # Counterparty API - Secured or Public depending on setting
+        # Rule 1: Your IP always has access to Counterparty API
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: !Ref YourIp
+          
+        # Rule 2: Allow VPC internal access to Counterparty API (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: 10.0.0.0/8
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: 172.16.0.0/12
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: 192.168.0.0/16
+        
+        # Rule 3: Public access to Counterparty API (if enabled)
         - !If
           - PublicRpcEnabled
           - IpProtocol: tcp
             FromPort: 4000
             ToPort: 4000
             CidrIp: 0.0.0.0/0
-          - IpProtocol: tcp
-            FromPort: 4000
-            ToPort: 4000
-            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}-sg"

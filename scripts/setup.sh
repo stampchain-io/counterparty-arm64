@@ -145,10 +145,10 @@ if [ "$PLATFORM" = "aws" ]; then
     log_success "AWS-specific setup complete"
     
     log_info "To monitor Bitcoin sync status, you can run:"
-    log_info "  ~/check-bitcoin-sync.sh --user bitcoinrpc --pass YOUR_PASSWORD --verbose"
+    log_info "  ~/check-bitcoin-sync.sh --user rpc --pass rpc --verbose"
     log_info ""
     log_info "To set up automatic monitoring (every 10 minutes):"
-    log_info "  ~/monitor-bitcoin.sh --user bitcoinrpc --pass YOUR_PASSWORD --setup-cron"
+    log_info "  ~/monitor-bitcoin.sh --user rpc --pass rpc --setup-cron"
 fi
 
 # Add environment variables to .bashrc

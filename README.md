@@ -166,7 +166,10 @@ When creating a new security group, it will automatically:
 - Open Bitcoin P2P port (8333) to the world for blockchain sync
 - Open Counterparty P2P port (4001) to the world
 - Restrict Bitcoin RPC (8332) to your IP address
-- Restrict Counterparty API (4000) to your IP address by default, or open to the world if PUBLIC_RPC_ACCESS=true
+- For Counterparty API (port 4000):
+  - Allow access from your IP address
+  - Allow access from all private IP ranges within AWS VPC (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+  - Optionally open to the world if PUBLIC_RPC_ACCESS=true
 
 ### Ubuntu Version
 
@@ -254,14 +257,22 @@ export SNS_TOPIC_ARN="arn:aws:sns:region:account-id:topic-name"
 
 The deployment includes tools to monitor Bitcoin synchronization status:
 
+#### Default RPC Credentials
+
+The Docker containers use the following RPC credentials by default:
+- Username: `rpc`
+- Password: `rpc`
+
+These credentials are configured in the docker-compose.yml file and are used for communication between the Bitcoin and Counterparty containers.
+
 #### Check Bitcoin Sync Status
 
 ```bash
 # Basic sync status check
-~/check-bitcoin-sync.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD
+~/check-bitcoin-sync.sh --user rpc --pass rpc
 
 # Detailed sync status with more information
-~/check-bitcoin-sync.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD --verbose
+~/check-bitcoin-sync.sh --user rpc --pass rpc --verbose
 ```
 
 #### Automated Monitoring
@@ -270,14 +281,16 @@ Set up automatic monitoring that runs every 10 minutes and logs the status:
 
 ```bash
 # Set up monitoring (runs every 10 minutes)
-~/monitor-bitcoin.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD --setup-cron
+~/monitor-bitcoin.sh --user rpc --pass rpc --setup-cron
 
 # Set up monitoring with email alerts
-~/monitor-bitcoin.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD --email your@email.com --setup-cron
+~/monitor-bitcoin.sh --user rpc --pass rpc --email your@email.com --setup-cron
 
 # Check the logs
 cat /var/log/bitcoin-monitor.log
 ```
+
+To customize the RPC credentials, edit the docker-compose.yml file and update all instances of the credentials consistently.
 
 ## Troubleshooting
 
