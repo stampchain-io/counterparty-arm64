@@ -134,9 +134,8 @@ if [ "$PLATFORM" = "aws" ]; then
     # Copy AWS scripts
     cp "$REPO_DIR/aws/scripts/create-snapshot.sh" "$HOME/"
     cp "$REPO_DIR/aws/scripts/check-disk-usage.sh" "$HOME/"
-    cp "$REPO_DIR/aws/scripts/check-bitcoin-sync.sh" "$HOME/"
-    cp "$REPO_DIR/aws/scripts/monitor-bitcoin.sh" "$HOME/"
-    chmod +x "$HOME/create-snapshot.sh" "$HOME/check-disk-usage.sh" "$HOME/check-bitcoin-sync.sh" "$HOME/monitor-bitcoin.sh"
+    cp "$REPO_DIR/aws/scripts/check-sync-status.sh" "$HOME/"
+    chmod +x "$HOME/create-snapshot.sh" "$HOME/check-disk-usage.sh" "$HOME/check-sync-status.sh"
     
     # Set up cron jobs for maintenance
     (crontab -l 2>/dev/null; echo "0 2 * * 0 $HOME/create-snapshot.sh") | crontab -
@@ -144,11 +143,11 @@ if [ "$PLATFORM" = "aws" ]; then
     
     log_success "AWS-specific setup complete"
     
-    log_info "To monitor Bitcoin sync status, you can run:"
-    log_info "  ~/check-bitcoin-sync.sh --user rpc --pass rpc --verbose"
+    log_info "To check Bitcoin sync status, you can run:"
+    log_info "  ~/check-sync-status.sh"
     log_info ""
-    log_info "To set up automatic monitoring (every 10 minutes):"
-    log_info "  ~/monitor-bitcoin.sh --user rpc --pass rpc --setup-cron"
+    log_info "You can check disk usage with:"
+    log_info "  ~/check-disk-usage.sh"
 fi
 
 # Add environment variables to .bashrc

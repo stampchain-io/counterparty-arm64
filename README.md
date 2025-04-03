@@ -267,28 +267,31 @@ These credentials are configured in the docker-compose.yml file and are used for
 
 #### Check Bitcoin Sync Status
 
-```bash
-# Basic sync status check
-~/check-bitcoin-sync.sh --user rpc --pass rpc
-
-# Detailed sync status with more information
-~/check-bitcoin-sync.sh --user rpc --pass rpc --verbose
-```
-
-#### Automated Monitoring
-
-Set up automatic monitoring that runs every 10 minutes and logs the status:
+A simple script is included to check the synchronization status of your Bitcoin node:
 
 ```bash
-# Set up monitoring (runs every 10 minutes)
-~/monitor-bitcoin.sh --user rpc --pass rpc --setup-cron
-
-# Set up monitoring with email alerts
-~/monitor-bitcoin.sh --user rpc --pass rpc --email your@email.com --setup-cron
-
-# Check the logs
-cat /var/log/bitcoin-monitor.log
+# Check the sync status
+~/check-sync-status.sh
 ```
+
+The script will display:
+- Current block height
+- Chain headers height
+- Synchronization progress percentage
+- Synchronization status (syncing or synchronized)
+- If syncing, the number of blocks remaining
+- Recent Counterparty logs
+
+#### Disk Usage Monitoring
+
+Monitor disk space usage with:
+
+```bash
+# Check disk usage
+~/check-disk-usage.sh
+```
+
+This is run as a cron job every hour to ensure sufficient disk space is available.
 
 To customize the RPC credentials, edit the docker-compose.yml file and update all instances of the credentials consistently.
 
