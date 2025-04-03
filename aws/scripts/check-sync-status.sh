@@ -3,8 +3,12 @@
 
 # Source common functions
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-source "$REPO_DIR/scripts/common.sh"
+if [ -f "$HOME/common.sh" ]; then
+    source "$HOME/common.sh"
+else
+    REPO_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
+    source "$REPO_DIR/scripts/common.sh"
+fi
 
 # Get Bitcoin container name
 BITCOIN_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "bitcoind.*1$" | head -1)

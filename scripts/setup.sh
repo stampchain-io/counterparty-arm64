@@ -135,7 +135,8 @@ if [ "$PLATFORM" = "aws" ]; then
     cp "$REPO_DIR/aws/scripts/create-snapshot.sh" "$HOME/"
     cp "$REPO_DIR/aws/scripts/check-disk-usage.sh" "$HOME/"
     cp "$REPO_DIR/aws/scripts/check-sync-status.sh" "$HOME/"
-    chmod +x "$HOME/create-snapshot.sh" "$HOME/check-disk-usage.sh" "$HOME/check-sync-status.sh"
+    cp "$REPO_DIR/scripts/common.sh" "$HOME/"
+    chmod +x "$HOME/create-snapshot.sh" "$HOME/check-disk-usage.sh" "$HOME/check-sync-status.sh" "$HOME/common.sh"
     
     # Set up cron jobs for maintenance
     (crontab -l 2>/dev/null; echo "0 2 * * 0 $HOME/create-snapshot.sh") | crontab -
