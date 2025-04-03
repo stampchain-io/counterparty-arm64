@@ -96,6 +96,11 @@ This project requires the AWS CLI to be installed and configured with appropriat
    - `AWS_SUBNET_ID`: Your subnet ID
    - `AWS_KEY_NAME`: Your EC2 key pair name
    
+   **For Private Repositories**:
+   If you're using a private GitHub repository for counterparty-arm64, you'll need to:
+   - Create a GitHub Personal Access Token with repo access permissions
+   - Add it to the .env file as `GITHUB_TOKEN=your_token_here`
+   
    Example .env file with values for a private deployment:
    ```
    # VPC and Subnet Configuration

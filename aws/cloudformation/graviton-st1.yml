@@ -208,6 +208,12 @@ Parameters:
       - "24.04"
       - "22.04"
       
+  GitHubToken:
+    Description: GitHub personal access token for private repository access (optional)
+    Type: String
+    Default: ""
+    NoEcho: true
+      
   NetworkProfile:
     Description: Bitcoin/Counterparty network profile to use
     Type: String
@@ -579,14 +585,26 @@ Resources:
           # Clone counterparty-arm64 repository with retry logic
           cd /home/ubuntu
           REPO_URL="https://github.com/stampchain-io/counterparty-arm64.git"
+          # Optional GitHub token parameter for private repository access
+          GITHUB_TOKEN="${GitHubToken}"
           MAX_RETRIES=3
           
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Cloning repository (attempt $i of $MAX_RETRIES)..."
-            git clone $REPO_URL && break
+            
+            if [ -n "$GITHUB_TOKEN" ]; then
+              # Use token for private repository
+              echo "Using GitHub token for private repository access"
+              REPO_WITH_TOKEN="https://${GITHUB_TOKEN}@github.com/stampchain-io/counterparty-arm64.git"
+              git clone $REPO_WITH_TOKEN && break
+            else
+              # Try public access
+              git clone $REPO_URL && break
+            fi
             
             if [ $i -eq $MAX_RETRIES ]; then
               echo "Failed to clone repository after $MAX_RETRIES attempts"
+              echo "If this is a private repository, please provide a GitHubToken parameter"
               exit 1
             fi
             
@@ -599,7 +617,18 @@ Resources:
           mkdir -p /bitcoin-data/repo
           chown -R ubuntu:ubuntu /bitcoin-data/repo
           cd /bitcoin-data/repo
-          sudo -u ubuntu git clone https://github.com/CounterpartyXCP/counterparty-core.git
+          
+          # Clone Counterparty Core - this is a public repo but could be changed
+          COUNTERPARTY_REPO_URL="https://github.com/CounterpartyXCP/counterparty-core.git"
+          
+          if [ -n "$GITHUB_TOKEN" ]; then
+            # Use token for private repository - just in case it becomes private
+            COUNTERPARTY_REPO_WITH_TOKEN="https://${GITHUB_TOKEN}@github.com/CounterpartyXCP/counterparty-core.git"
+            sudo -u ubuntu git clone $COUNTERPARTY_REPO_WITH_TOKEN
+          else
+            # Use public URL
+            sudo -u ubuntu git clone $COUNTERPARTY_REPO_URL
+          fi
           
           chown -R ubuntu:ubuntu counterparty-arm64
           

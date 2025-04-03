@@ -61,6 +61,8 @@ DATA_VOLUME_SIZE=${DATA_VOLUME_SIZE:-1000}
 BITCOIN_VERSION=${BITCOIN_VERSION:-"26.0"}
 COUNTERPARTY_BRANCH=${COUNTERPARTY_BRANCH:-"master"}
 UBUNTU_VERSION=${UBUNTU_VERSION:-"24.04"}
+NETWORK_PROFILE=${NETWORK_PROFILE:-"mainnet"}
+GITHUB_TOKEN=${GITHUB_TOKEN:-""}
 STACK_NAME=${STACK_NAME:-"counterparty-arm64"}
 
 # Detect the current public IP address if not provided
@@ -277,7 +279,9 @@ else
         ParameterKey=BitcoinVersion,ParameterValue="$BITCOIN_VERSION" \
         ParameterKey=CounterpartyBranch,ParameterValue="$COUNTERPARTY_BRANCH" \
         ParameterKey=CounterpartyTag,ParameterValue="$COUNTERPARTY_TAG" \
-        ParameterKey=UbuntuVersion,ParameterValue="$UBUNTU_VERSION"
+        ParameterKey=UbuntuVersion,ParameterValue="$UBUNTU_VERSION" \
+        ParameterKey=GitHubToken,ParameterValue="$GITHUB_TOKEN" \
+        ParameterKey=NetworkProfile,ParameterValue="$NETWORK_PROFILE"
 fi
 
 # Check if creation was successful
