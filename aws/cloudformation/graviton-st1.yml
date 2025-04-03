@@ -352,19 +352,41 @@ Resources:
           # Update system
           apt-get update && apt-get upgrade -y
           
-          # Install AWS CLI and jq if not already installed
-          apt-get install -y awscli jq
+          # Install basic dependencies first - we need xfsprogs for volume formatting
+          apt-get install -y apt-transport-https ca-certificates curl software-properties-common git jq htop iotop xfsprogs bc
           
-          # Install dependencies
-          apt-get install -y apt-transport-https ca-certificates curl software-properties-common git jq htop iotop awscli
+          # Fix for aws-cli in Ubuntu 24.04
+          # First check if AWS CLI is already installed
+          if ! command -v aws &> /dev/null; then
+            if [ "$(lsb_release -cs)" = "noble" ]; then
+              # Use alternative method for Ubuntu 24.04
+              curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+              apt-get install -y unzip
+              unzip -q awscliv2.zip
+              ./aws/install
+              rm -rf aws awscliv2.zip
+            else
+              # Try standard method for older Ubuntu versions
+              apt-get install -y awscli || echo "Warning: Could not install awscli package"
+            fi
+          fi
           
-          # Add Docker repository
-          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-          apt-get update
-          
-          # Install Docker
-          apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          # Add Docker repository - with improved error handling
+          mkdir -p /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o docker.gpg
+          if [ -f docker.gpg ]; then
+            gpg --dearmor -o /etc/apt/keyrings/docker.gpg docker.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+            apt-get update
+            
+            # Install Docker
+            apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          else
+            echo "Failed to download Docker GPG key, using alternative method"
+            # Alternative Docker installation using snap as fallback
+            apt-get install -y snapd
+            snap install docker
+          fi
           
           # Add ubuntu user to docker group
           usermod -aG docker ubuntu
@@ -372,16 +394,47 @@ Resources:
           # Mount the ST1 volume
           mkdir -p /bitcoin-data
           
-          # Format the volume if needed
-          if ! blkid /dev/nvme1n1; then
-            mkfs -t xfs /dev/nvme1n1
+          # Find the correct device for the attached volume (NVMe naming can vary)
+          DATA_DEVICE=""
+          for dev in /dev/nvme*n1; do
+            if [ -e "$dev" ] && ! grep -q "$dev" /etc/fstab && [ "$dev" != "/dev/nvme0n1" ]; then
+              DATA_DEVICE="$dev"
+              echo "Found data device: $DATA_DEVICE"
+              break
+            fi
+          done
+          
+          # If NVMe device wasn't found, try traditional naming
+          if [ -z "$DATA_DEVICE" ] && [ -e "/dev/xvdf" ]; then
+            DATA_DEVICE="/dev/xvdf"
+            echo "Found data device: $DATA_DEVICE"
           fi
           
-          # Mount the volume
-          mount /dev/nvme1n1 /bitcoin-data
-          
-          # Add to fstab for persistence
-          echo "/dev/nvme1n1 /bitcoin-data xfs defaults,nofail 0 2" >> /etc/fstab
+          if [ -z "$DATA_DEVICE" ]; then
+            echo "Error: Could not find data volume device"
+            # Use a fallback directory if volume can't be found
+            mkdir -p /bitcoin-data-local
+            ln -sf /bitcoin-data-local /bitcoin-data
+          else
+            # Format the volume if needed
+            if ! blkid "$DATA_DEVICE"; then
+              echo "Formatting $DATA_DEVICE with XFS filesystem"
+              mkfs.xfs -f "$DATA_DEVICE"
+            fi
+            
+            # Mount the volume
+            echo "Mounting $DATA_DEVICE to /bitcoin-data"
+            mount "$DATA_DEVICE" /bitcoin-data || {
+              echo "Mount failed, attempting to force format and mount"
+              mkfs.xfs -f "$DATA_DEVICE"
+              mount "$DATA_DEVICE" /bitcoin-data
+            }
+            
+            # Add to fstab for persistence
+            if ! grep -q "$DATA_DEVICE" /etc/fstab; then
+              echo "$DATA_DEVICE /bitcoin-data xfs defaults,nofail 0 2" >> /etc/fstab
+            fi
+          fi
           
           # Set permissions
           chown -R ubuntu:ubuntu /bitcoin-data
@@ -404,16 +457,51 @@ Resources:
           systemctl restart docker
           systemctl enable docker
           
-          # Clone counterparty-arm64 repository
+          # Clone counterparty-arm64 repository with retry logic
           cd /home/ubuntu
-          git clone https://github.com/yourusername/counterparty-arm64.git
+          REPO_URL="https://github.com/stampchain-io/counterparty-arm64.git"
+          MAX_RETRIES=3
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            echo "Cloning repository (attempt $i of $MAX_RETRIES)..."
+            git clone $REPO_URL && break
+            
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "Failed to clone repository after $MAX_RETRIES attempts"
+              exit 1
+            fi
+            
+            echo "Clone failed. Retrying in 5 seconds..."
+            sleep 5
+          done
+          
           chown -R ubuntu:ubuntu counterparty-arm64
           
-          # Run setup script
-          su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version ${BitcoinVersion} --counterparty-branch ${CounterpartyBranch} --counterparty-tag ${CounterpartyTag} --data-dir /bitcoin-data --platform aws"
+          # Copy common.sh to home directory for use by check-sync-status.sh
+          cp /home/ubuntu/counterparty-arm64/scripts/common.sh /home/ubuntu/
+          chmod +x /home/ubuntu/common.sh
+          
+          # Run setup script - retry logic in case of network issues
+          echo "Running setup script..."
+          su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version ${BitcoinVersion} --counterparty-branch ${CounterpartyBranch} --counterparty-tag ${CounterpartyTag} --data-dir /bitcoin-data --platform aws" || {
+            echo "Setup script failed on first attempt. Waiting 30 seconds and retrying..."
+            sleep 30
+            su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version ${BitcoinVersion} --counterparty-branch ${CounterpartyBranch} --counterparty-tag ${CounterpartyTag} --data-dir /bitcoin-data --platform aws"
+          }
+          
+          # Verify that the check-sync-status.sh script was copied correctly
+          if [ ! -f /home/ubuntu/check-sync-status.sh ]; then
+            echo "check-sync-status.sh was not copied by setup script, copying manually..."
+            cp /home/ubuntu/counterparty-arm64/aws/scripts/check-sync-status.sh /home/ubuntu/
+            chmod +x /home/ubuntu/check-sync-status.sh
+          fi
+          
+          # Fix the check-sync-status.sh script to use the local common.sh
+          sed -i 's|SCRIPT_DIR=\"\$(cd \"\$(dirname \"\${BASH_SOURCE\[0\]}\")\" \&\& pwd)\"\nREPO_DIR=\"\$(dirname \"\$(dirname \"\$SCRIPT_DIR\")\")\"\nsource \"\$REPO_DIR\/scripts\/common.sh\"|source \"\/home\/ubuntu\/common.sh\"|g' /home/ubuntu/check-sync-status.sh || true
           
           # Start the service
-          su - ubuntu -c "~/start-counterparty.sh mainnet"
+          echo "Starting Counterparty service..."
+          su - ubuntu -c "~/start-counterparty.sh mainnet" || echo "Failed to start Counterparty service, check logs for details"
 
 Outputs:
   InstanceId:
