@@ -49,6 +49,12 @@ Conditions:
   UseUbuntu2404: !Equals [!Ref UbuntuVersion, "24.04"]
   UseUbuntu2204: !Equals [!Ref UbuntuVersion, "22.04"]
   PublicRpcEnabled: !Equals [!Ref PublicRpcAccess, "true"]
+  
+  # Network profile conditions
+  UseMainnetProfile: !Equals [!Ref NetworkProfile, "mainnet"]
+  UseTestnet3Profile: !Equals [!Ref NetworkProfile, "testnet3"]
+  UseTestnet4Profile: !Equals [!Ref NetworkProfile, "testnet4"]
+  UseRegtestProfile: !Equals [!Ref NetworkProfile, "regtest"]
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -76,6 +82,7 @@ Metadata:
           - BitcoinVersion
           - CounterpartyBranch
           - CounterpartyTag
+          - NetworkProfile
           - UbuntuVersion
     
     ParameterLabels:
@@ -91,6 +98,8 @@ Metadata:
         default: "Existing Security Group ID"
       UbuntuVersion:
         default: "Ubuntu Version"
+      NetworkProfile:
+        default: "Network Profile (mainnet/testnet/regtest)"
 
 Parameters:
   KeyName:
@@ -198,6 +207,16 @@ Parameters:
     AllowedValues:
       - "24.04"
       - "22.04"
+      
+  NetworkProfile:
+    Description: Bitcoin/Counterparty network profile to use
+    Type: String
+    Default: "mainnet"
+    AllowedValues:
+      - "mainnet"
+      - "testnet3"
+      - "testnet4"
+      - "regtest"
 
 Resources:
   # Security Group for the Counterparty node (created if UseExistingSecurityGroup is false)
@@ -212,24 +231,111 @@ Resources:
           FromPort: 22
           ToPort: 22
           CidrIp: !Ref YourIp
-        - IpProtocol: tcp
-          FromPort: 8333
-          ToPort: 8333
-          CidrIp: 0.0.0.0/0
+        # Bitcoin P2P ports - conditionally exposed based on network profile
+        # Mainnet
+        - !If
+          - UseMainnetProfile
+          - IpProtocol: tcp
+            FromPort: 8333
+            ToPort: 8333
+            CidrIp: 0.0.0.0/0
+          - !Ref AWS::NoValue
+        # Testnet3
+        - !If
+          - UseTestnet3Profile
+          - IpProtocol: tcp
+            FromPort: 18333
+            ToPort: 18333
+            CidrIp: 0.0.0.0/0
+          - !Ref AWS::NoValue
+        # Testnet4
+        - !If
+          - UseTestnet4Profile
+          - IpProtocol: tcp
+            FromPort: 49333
+            ToPort: 49333
+            CidrIp: 0.0.0.0/0
+          - !Ref AWS::NoValue
+        # Regtest
+        - !If
+          - UseRegtestProfile
+          - IpProtocol: tcp
+            FromPort: 29333
+            ToPort: 29333
+            CidrIp: 0.0.0.0/0
+          - !Ref AWS::NoValue
+            
+        # Counterparty API websocket port
         - IpProtocol: tcp
           FromPort: 4001
           ToPort: 4001
           CidrIp: 0.0.0.0/0
-        # Bitcoin RPC
-        - IpProtocol: tcp
-          FromPort: 8332
-          ToPort: 8332
-          CidrIp: !Ref YourIp
-        # Rule 1: Your IP always has access to Counterparty API
-        - IpProtocol: tcp
-          FromPort: 4000
-          ToPort: 4000
-          CidrIp: !Ref YourIp
+        # Bitcoin RPC ports - conditionally exposed based on network profile
+        # Mainnet RPC
+        - !If
+          - UseMainnetProfile
+          - IpProtocol: tcp
+            FromPort: 8332
+            ToPort: 8332
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Testnet3 RPC
+        - !If
+          - UseTestnet3Profile
+          - IpProtocol: tcp
+            FromPort: 18332
+            ToPort: 18332
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Testnet4 RPC
+        - !If
+          - UseTestnet4Profile
+          - IpProtocol: tcp
+            FromPort: 48332
+            ToPort: 48332
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Regtest RPC
+        - !If
+          - UseRegtestProfile
+          - IpProtocol: tcp
+            FromPort: 18443
+            ToPort: 18443
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Counterparty API ports - conditionally exposed based on network profile
+        # Mainnet API
+        - !If
+          - UseMainnetProfile
+          - IpProtocol: tcp
+            FromPort: 4000
+            ToPort: 4000
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Testnet3 API
+        - !If
+          - UseTestnet3Profile
+          - IpProtocol: tcp
+            FromPort: 14000
+            ToPort: 14000
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Testnet4 API
+        - !If
+          - UseTestnet4Profile
+          - IpProtocol: tcp
+            FromPort: 44000
+            ToPort: 44000
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
+        # Regtest API
+        - !If
+          - UseRegtestProfile
+          - IpProtocol: tcp
+            FromPort: 24000
+            ToPort: 24000
+            CidrIp: !Ref YourIp
+          - !Ref AWS::NoValue
           
         # Rule 2: Allow VPC internal access using RFC1918 private ranges
         - IpProtocol: tcp
@@ -507,9 +613,9 @@ Resources:
           sed -i '/^REPO_DIR=.*/d' /home/ubuntu/check-sync-status.sh
           sed -i '/^source "\$REPO_DIR\/scripts\/common.sh"/d' /home/ubuntu/check-sync-status.sh || true
           
-          # Start the service
-          echo "Starting Counterparty service..."
-          su - ubuntu -c "~/start-counterparty.sh mainnet" || echo "Failed to start Counterparty service, check logs for details"
+          # Start the service with the selected network profile
+          echo "Starting Counterparty service with ${NetworkProfile} profile..."
+          su - ubuntu -c "~/start-counterparty.sh ${NetworkProfile}" || echo "Failed to start Counterparty service, check logs for details"
 
 Outputs:
   InstanceId:
@@ -555,3 +661,7 @@ Outputs:
       - UseUbuntu2404
       - "Using Ubuntu 24.04 LTS (Noble Numbat)"
       - "Using Ubuntu 22.04 LTS (Jammy Jellyfish)"
+      
+  NetworkInfo:
+    Description: Information about the selected network profile
+    Value: !Sub "Using ${NetworkProfile} network profile"
