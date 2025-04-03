@@ -83,16 +83,18 @@ jobs:
           # Install build tools
           RUN pip3 install maturin
 
-          # Copy the Counterparty code
-          COPY . /counterparty-core
-          WORKDIR /counterparty-core
+          # Copy README first
+          COPY README.md /README.md
 
-          # Build and install
+          # Install counterparty-rs
+          COPY ./counterparty-rs /counterparty-rs
+          WORKDIR /counterparty-rs
           RUN pip3 install .
 
-          # Create entrypoint
-          COPY bin/counterparty-server /usr/local/bin/
-          RUN chmod +x /usr/local/bin/counterparty-server
+          # Install counterparty-core
+          COPY ./counterparty-core /counterparty-core
+          WORKDIR /counterparty-core
+          RUN pip3 install .
 
           ENTRYPOINT ["counterparty-server"]
           CMD ["start"]
