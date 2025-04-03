@@ -3,43 +3,43 @@ Description: 'Counterparty ARM64 on AWS Graviton with ST1 volume'
 
 # Define mappings for AMI IDs
 Mappings:
-  # Ubuntu 24.04 LTS (Noble Numbat) ARM64 AMIs
+  # Ubuntu 24.04 LTS (Noble Numbat) ARM64 AMIs - updated 2025-04-03
   Ubuntu2404:
     us-east-1:
-      ARM64AMI: ami-04b25a4b9eb42ca31 # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - 2025-04-02
     us-east-2:
-      ARM64AMI: ami-0aac7503e2df9ff4e # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
     us-west-1:
-      ARM64AMI: ami-019a19ad2c55bd609 # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
     us-west-2: 
-      ARM64AMI: ami-0a0a00c34ea77ac30 # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
     eu-west-1:
-      ARM64AMI: ami-0bc4ff5ea2ff89caa # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
     ap-northeast-1:
-      ARM64AMI: ami-0bad1bf489b352f07 # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
     ap-southeast-1:
-      ARM64AMI: ami-0a0f9ddfdc5d65cb4 # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
     ap-southeast-2:
-      ARM64AMI: ami-04eada348cdc35cb7 # Ubuntu 24.04 ARM64
+      ARM64AMI: ami-0e7cbbc0b03465aaf # Ubuntu 24.04 ARM64 - fallback to us-east-1
       
-  # Ubuntu 22.04 LTS (Jammy Jellyfish) ARM64 AMIs - kept for compatibility
+  # Ubuntu 22.04 LTS (Jammy Jellyfish) ARM64 AMIs - updated 2025-04-03
   Ubuntu2204:
     us-east-1:
-      ARM64AMI: ami-0a0c8eebcdd6dcbd0 # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - 2025-04-02
     us-east-2:
-      ARM64AMI: ami-0db6756e6d9838d2f # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
     us-west-1:
-      ARM64AMI: ami-0487ee18e4dac0d20 # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
     us-west-2: 
-      ARM64AMI: ami-0b97a7dd81b5bc55e # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
     eu-west-1:
-      ARM64AMI: ami-0d17553da38344d93 # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
     ap-northeast-1:
-      ARM64AMI: ami-0d52744dc3c6a8e0c # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
     ap-southeast-1:
-      ARM64AMI: ami-0bd9915d620999a50 # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
     ap-southeast-2:
-      ARM64AMI: ami-0db5eb7992b11aff1 # Ubuntu 22.04 ARM64
+      ARM64AMI: ami-0836cb0ffc615b773 # Ubuntu 22.04 ARM64 - fallback to us-east-1
 
 # Define conditions
 Conditions:
