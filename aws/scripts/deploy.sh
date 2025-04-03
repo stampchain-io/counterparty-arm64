@@ -255,6 +255,7 @@ else
       --region "$AWS_REGION" \
       --stack-name "$STACK_NAME" \
       --template-body "file://$TEMPLATE_PATH" \
+      --capabilities CAPABILITY_IAM \
       --parameters \
         ParameterKey=VpcId,ParameterValue="$AWS_VPC_ID" \
         ParameterKey=SubnetId,ParameterValue="$AWS_SUBNET_ID" \
