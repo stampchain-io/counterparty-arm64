@@ -1,5 +1,7 @@
 # Counterparty ARM64
 
+[![Build and Push ARM64 Docker Images](https://github.com/stampchain-io/counterparty-arm64/actions/workflows/docker-build.yml/badge.svg)](https://github.com/stampchain-io/counterparty-arm64/actions/workflows/docker-build.yml)
+
 This repository provides a complete solution for running Counterparty and Bitcoin Core on ARM64 architecture, specifically optimized for AWS Graviton instances with ST1 storage volumes.
 
 ## Features
@@ -251,15 +253,24 @@ scripts/setup.sh --data-dir /path/to/data
 
 This project uses pre-built Docker images for faster deployment on ARM64 systems:
 
-- **Bitcoin Core**: `xcparty/bitcoind-arm64:[version]`
+- **Bitcoin Core**: [`xcparty/bitcoind-arm64`](https://hub.docker.com/r/xcparty/bitcoind-arm64)
   - Version tags match Bitcoin Core releases (e.g., `26.0`)
   - Optimized for ARM64 architecture
   - Includes all necessary dependencies
 
-- **Counterparty Core**: `xcparty/counterparty-core-arm64:[branch]`
+- **Counterparty Core**: [`xcparty/counterparty-core-arm64`](https://hub.docker.com/r/xcparty/counterparty-core-arm64)
   - Branch/tag tags match Counterparty Core branches (e.g., `develop`, `master`)
   - Built with ARM64 native support
   - Includes all Python dependencies
+
+### Available Images
+
+| Image | Tags | Status | Size |
+|-------|------|--------|------|
+| `xcparty/bitcoind-arm64` | `26.0` | ✅ Available | ~150 MB |
+| `xcparty/counterparty-core-arm64` | `develop` | 🔄 Building | ~800 MB |
+
+> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation.
 
 These images are built through our GitHub Actions workflow. For more information about the build process, see [ARM64_BUILD.md](ARM64_BUILD.md).
 
