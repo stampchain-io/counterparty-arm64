@@ -5,6 +5,8 @@ This repository provides a complete solution for running Counterparty and Bitcoi
 ## Features
 
 * Native ARM64 support for both Bitcoin Core and Counterparty
+* Pre-built Docker images for ARM64 architecture
+* Fast deployment using Docker Hub images
 * Optimized storage configuration for AWS ST1 volumes
 * Version/branch selection for Counterparty and Bitcoin Core
 * AWS CloudFormation template for one-click deployment
@@ -80,6 +82,8 @@ This project requires the AWS CLI to be installed and configured with appropriat
 
 ### AWS Deployment
 
+The AWS deployment uses pre-built Docker Hub images to significantly speed up the setup process. Instead of building containers on the instance, the CloudFormation template pulls optimized ARM64 images from Docker Hub.
+
 #### Easy Deployment with Environment Configuration
 
 1. Create your environment file:
@@ -130,6 +134,12 @@ This project requires the AWS CLI to be installed and configured with appropriat
    - Create a CloudFormation stack
    - Wait for deployment to complete
    - Display connection information
+   
+4. The deployment process:
+   - Pulls optimized Bitcoin Core image from `xcparty/bitcoind-arm64:[version]`
+   - Pulls optimized Counterparty Core image from `xcparty/counterparty-core-arm64:[branch]`
+   - Starts Bitcoin immediately after instance setup
+   - Automatically starts Counterparty when Bitcoin reaches 10% synchronization
 
 #### Manual Deployment Options
 
@@ -237,6 +247,22 @@ You can specify where the blockchain data will be stored:
 scripts/setup.sh --data-dir /path/to/data
 ```
 
+## Docker Hub Images
+
+This project uses pre-built Docker images for faster deployment on ARM64 systems:
+
+- **Bitcoin Core**: `xcparty/bitcoind-arm64:[version]`
+  - Version tags match Bitcoin Core releases (e.g., `26.0`)
+  - Optimized for ARM64 architecture
+  - Includes all necessary dependencies
+
+- **Counterparty Core**: `xcparty/counterparty-core-arm64:[branch]`
+  - Branch/tag tags match Counterparty Core branches (e.g., `develop`, `master`)
+  - Built with ARM64 native support
+  - Includes all Python dependencies
+
+These images are built through our GitHub Actions workflow. For more information about the build process, see [ARM64_BUILD.md](ARM64_BUILD.md).
+
 ## Directory Structure
 
 ```
@@ -258,6 +284,9 @@ counterparty-arm64/
 │       ├── check-bitcoin-sync.sh  # Bitcoin sync status script
 │       ├── monitor-bitcoin.sh     # Automated Bitcoin monitoring
 │       └── deploy.sh              # CloudFormation deployment script
+├── .github/                       # GitHub configuration
+│   └── workflows/                 # GitHub Actions workflows
+│       └── docker-build.yml       # ARM64 Docker image build workflow
 └── docs/                          # Documentation
 ```
 
