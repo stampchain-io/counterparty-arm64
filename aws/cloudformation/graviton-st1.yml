@@ -481,12 +481,18 @@ Resources:
           cp /home/ubuntu/counterparty-arm64/scripts/common.sh /home/ubuntu/
           chmod +x /home/ubuntu/common.sh
           
+          # Copy bitcoin-entrypoint.sh to counterparty-node directory
+          mkdir -p /home/ubuntu/counterparty-node
+          cp /home/ubuntu/counterparty-arm64/docker/bitcoin-entrypoint.sh /home/ubuntu/counterparty-node/
+          chmod +x /home/ubuntu/counterparty-node/bitcoin-entrypoint.sh
+          chown ubuntu:ubuntu /home/ubuntu/counterparty-node/bitcoin-entrypoint.sh
+          
           # Run setup script - retry logic in case of network issues
           echo "Running setup script..."
-          su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version ${BitcoinVersion} --counterparty-branch ${CounterpartyBranch} --counterparty-tag ${CounterpartyTag} --data-dir /bitcoin-data --platform aws" || {
+          su - ubuntu -c "cd counterparty-arm64 && chmod +x scripts/setup.sh && scripts/setup.sh --bitcoin-version '${BitcoinVersion}' --counterparty-branch '${CounterpartyBranch}' --data-dir '/bitcoin-data' --platform 'aws'" || {
             echo "Setup script failed on first attempt. Waiting 30 seconds and retrying..."
             sleep 30
-            su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version ${BitcoinVersion} --counterparty-branch ${CounterpartyBranch} --counterparty-tag ${CounterpartyTag} --data-dir /bitcoin-data --platform aws"
+            su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version '${BitcoinVersion}' --counterparty-branch '${CounterpartyBranch}' --data-dir '/bitcoin-data' --platform 'aws'"
           }
           
           # Verify that the check-sync-status.sh script was copied correctly
@@ -497,7 +503,9 @@ Resources:
           fi
           
           # Fix the check-sync-status.sh script to use the local common.sh
-          sed -i 's|SCRIPT_DIR=\"\$(cd \"\$(dirname \"\${BASH_SOURCE\[0\]}\")\" \&\& pwd)\"\nREPO_DIR=\"\$(dirname \"\$(dirname \"\$SCRIPT_DIR\")\")\"\nsource \"\$REPO_DIR\/scripts\/common.sh\"|source \"\/home\/ubuntu\/common.sh\"|g' /home/ubuntu/check-sync-status.sh || true
+          sed -i 's|^SCRIPT_DIR=.*|source "/home/ubuntu/common.sh"|' /home/ubuntu/check-sync-status.sh
+          sed -i '/^REPO_DIR=.*/d' /home/ubuntu/check-sync-status.sh
+          sed -i '/^source "\$REPO_DIR\/scripts\/common.sh"/d' /home/ubuntu/check-sync-status.sh || true
           
           # Start the service
           echo "Starting Counterparty service..."
