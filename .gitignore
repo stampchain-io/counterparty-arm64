@@ -1,0 +1,55 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Editor Files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment Files
+.env
+*.env
+*.env.local
+!.env.example
+
+# Docker
+.docker-data/
+
+# AWS
+.aws/
+aws-credentials.json
+
+# Logs
+*.log
+logs/
+
+# Runtime data
+data/
+build/
+
+# Dependencies
+node_modules/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Configuration files with potential secrets
+config.json
+*-config.json
+secrets.json
+*.pem
+*.key
+
+# Build artifacts
+dist/
+target/
+
+# Personal test files
+test-*
+*.backup
+*.bak

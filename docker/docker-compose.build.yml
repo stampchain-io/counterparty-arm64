@@ -1,0 +1,60 @@
+services:
+  # Build configuration for all services
+  
+  # Custom ARM64 bitcoind build
+  bitcoind:
+    build:
+      context: .
+      dockerfile: Dockerfile.bitcoind
+      args:
+        - BITCOIN_VERSION=${BITCOIN_VERSION:-26.0}
+
+  bitcoind-testnet3:
+    build:
+      context: .
+      dockerfile: Dockerfile.bitcoind
+      args:
+        - BITCOIN_VERSION=${BITCOIN_VERSION:-26.0}
+
+  bitcoind-testnet4:
+    build:
+      context: .
+      dockerfile: Dockerfile.bitcoind
+      args:
+        - BITCOIN_VERSION=${BITCOIN_VERSION:-26.0}
+
+  bitcoind-regtest:
+    build:
+      context: .
+      dockerfile: Dockerfile.bitcoind
+      args:
+        - BITCOIN_VERSION=${BITCOIN_VERSION:-26.0}
+  
+  # Counterparty builds
+  counterparty-core:
+    build: 
+      context: ${COUNTERPARTY_REPO:-/bitcoin-data/repo/counterparty-core}
+      args:
+        - BRANCH=${COUNTERPARTY_BRANCH:-master}
+        - TAG=${COUNTERPARTY_TAG:-}
+
+  counterparty-core-testne3:
+    build: 
+      context: ${COUNTERPARTY_REPO:-/bitcoin-data/repo/counterparty-core}
+      args:
+        - BRANCH=${COUNTERPARTY_BRANCH:-master}
+        - TAG=${COUNTERPARTY_TAG:-}
+
+  counterparty-core-testne4:
+    build: 
+      context: ${COUNTERPARTY_REPO:-/bitcoin-data/repo/counterparty-core}
+      args:
+        - BRANCH=${COUNTERPARTY_BRANCH:-master}
+        - TAG=${COUNTERPARTY_TAG:-}
+
+  counterparty-core-regtest:
+    build: 
+      context: ${COUNTERPARTY_REPO:-/bitcoin-data/repo/counterparty-core}
+      args:
+        - BRANCH=${COUNTERPARTY_BRANCH:-master}
+        - TAG=${COUNTERPARTY_TAG:-}

@@ -1,0 +1,425 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Counterparty ARM64 on AWS Graviton with ST1 volume'
+
+# Define mappings for AMI IDs
+Mappings:
+  # Ubuntu 24.04 LTS (Noble Numbat) ARM64 AMIs
+  Ubuntu2404:
+    us-east-1:
+      ARM64AMI: ami-04b25a4b9eb42ca31 # Ubuntu 24.04 ARM64
+    us-east-2:
+      ARM64AMI: ami-0aac7503e2df9ff4e # Ubuntu 24.04 ARM64
+    us-west-1:
+      ARM64AMI: ami-019a19ad2c55bd609 # Ubuntu 24.04 ARM64
+    us-west-2: 
+      ARM64AMI: ami-0a0a00c34ea77ac30 # Ubuntu 24.04 ARM64
+    eu-west-1:
+      ARM64AMI: ami-0bc4ff5ea2ff89caa # Ubuntu 24.04 ARM64
+    ap-northeast-1:
+      ARM64AMI: ami-0bad1bf489b352f07 # Ubuntu 24.04 ARM64
+    ap-southeast-1:
+      ARM64AMI: ami-0a0f9ddfdc5d65cb4 # Ubuntu 24.04 ARM64
+    ap-southeast-2:
+      ARM64AMI: ami-04eada348cdc35cb7 # Ubuntu 24.04 ARM64
+      
+  # Ubuntu 22.04 LTS (Jammy Jellyfish) ARM64 AMIs - kept for compatibility
+  Ubuntu2204:
+    us-east-1:
+      ARM64AMI: ami-0a0c8eebcdd6dcbd0 # Ubuntu 22.04 ARM64
+    us-east-2:
+      ARM64AMI: ami-0db6756e6d9838d2f # Ubuntu 22.04 ARM64
+    us-west-1:
+      ARM64AMI: ami-0487ee18e4dac0d20 # Ubuntu 22.04 ARM64
+    us-west-2: 
+      ARM64AMI: ami-0b97a7dd81b5bc55e # Ubuntu 22.04 ARM64
+    eu-west-1:
+      ARM64AMI: ami-0d17553da38344d93 # Ubuntu 22.04 ARM64
+    ap-northeast-1:
+      ARM64AMI: ami-0d52744dc3c6a8e0c # Ubuntu 22.04 ARM64
+    ap-southeast-1:
+      ARM64AMI: ami-0bd9915d620999a50 # Ubuntu 22.04 ARM64
+    ap-southeast-2:
+      ARM64AMI: ami-0db5eb7992b11aff1 # Ubuntu 22.04 ARM64
+
+# Define conditions
+Conditions:
+  CreateNewKey: !Equals [!Ref CreateNewKeyPair, "true"]
+  UseExistingSG: !Equals [!Ref UseExistingSecurityGroup, "true"]
+  CreateNewSG: !Not [!Condition UseExistingSG]
+  UseUbuntu2404: !Equals [!Ref UbuntuVersion, "24.04"]
+  UseUbuntu2204: !Equals [!Ref UbuntuVersion, "22.04"]
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Instance Configuration"
+        Parameters:
+          - InstanceType
+          - KeyName
+          - CreateNewKeyPair
+          - NewKeyPairName
+          - RootVolumeSize
+          - DataVolumeSize
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VpcId
+          - SubnetId
+          - YourIp
+          - UseExistingSecurityGroup
+          - ExistingSecurityGroupId
+      - Label:
+          default: "Counterparty Configuration"
+        Parameters:
+          - BitcoinVersion
+          - CounterpartyBranch
+          - CounterpartyTag
+          - UbuntuVersion
+    
+    ParameterLabels:
+      KeyName:
+        default: "Key Pair"
+      CreateNewKeyPair:
+        default: "Create New Key Pair?"
+      NewKeyPairName:
+        default: "New Key Pair Name"
+      UseExistingSecurityGroup:
+        default: "Use Existing Security Group?"
+      ExistingSecurityGroupId:
+        default: "Existing Security Group ID"
+      UbuntuVersion:
+        default: "Ubuntu Version"
+
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+
+  CreateNewKeyPair:
+    Description: Create a new key pair for this instance? (Not yet implemented, available in AWS Console)
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+
+  NewKeyPairName:
+    Description: Name for the new key pair (only used if creating a new key pair)
+    Type: String
+    Default: "counterparty-keypair"
+    MinLength: 1
+    MaxLength: 255
+    ConstraintDescription: Must be a valid key pair name.
+  
+  VpcId:
+    Description: VPC ID where the instance will be launched
+    Type: AWS::EC2::VPC::Id
+  
+  SubnetId:
+    Description: Subnet ID where the instance will be launched
+    Type: AWS::EC2::Subnet::Id
+    
+  UseExistingSecurityGroup:
+    Description: Use an existing security group instead of creating a new one?
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+  
+  ExistingSecurityGroupId:
+    Description: ID of existing security group (only used if UseExistingSecurityGroup is true)
+    Type: String
+    Default: ""
+  
+  InstanceType:
+    Description: EC2 instance type (Graviton-based)
+    Type: String
+    Default: m7g.xlarge
+    AllowedValues:
+      - m7g.large
+      - m7g.xlarge
+      - m7g.2xlarge
+      - c7g.xlarge
+      - c7g.2xlarge
+    ConstraintDescription: Must be a valid Graviton-based instance type.
+  
+  RootVolumeSize:
+    Description: Size of the root volume in GB
+    Type: Number
+    Default: 100
+    MinValue: 8
+    MaxValue: 500
+  
+  DataVolumeSize:
+    Description: Size of the data volume in GB
+    Type: Number
+    Default: 1000
+    MinValue: 500
+    MaxValue: 16000
+  
+  YourIp:
+    Description: Your IP address to allow SSH access (e.g., 123.123.123.123/32)
+    Type: String
+    AllowedPattern: (\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})
+    ConstraintDescription: Must be a valid CIDR range of the form x.x.x.x/x.
+  
+  BitcoinVersion:
+    Description: Bitcoin Core version to use
+    Type: String
+    Default: "26.0"
+  
+  CounterpartyBranch:
+    Description: Counterparty branch to use
+    Type: String
+    Default: "master"
+  
+  CounterpartyTag:
+    Description: Counterparty tag to use (optional)
+    Type: String
+    Default: ""
+    
+  UbuntuVersion:
+    Description: Ubuntu version to use
+    Type: String
+    Default: "24.04"
+    AllowedValues:
+      - "24.04"
+      - "22.04"
+
+Resources:
+  # Security Group for the Counterparty node (created if UseExistingSecurityGroup is false)
+  CounterpartySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateNewSG
+    Properties:
+      GroupDescription: Security group for Counterparty node
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref YourIp
+        - IpProtocol: tcp
+          FromPort: 8333
+          ToPort: 8333
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 4001
+          ToPort: 4001
+          CidrIp: 0.0.0.0/0
+        # Bitcoin RPC
+        - IpProtocol: tcp
+          FromPort: 8332
+          ToPort: 8332
+          CidrIp: !Ref YourIp
+        # Counterparty API
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: !Ref YourIp
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-sg"
+
+  # ST1 volume for blockchain data
+  DataVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      AvailabilityZone: !GetAtt CounterpartyInstance.AvailabilityZone
+      Size: !Ref DataVolumeSize
+      VolumeType: st1
+      Tags:
+        - Key: Name
+          Value: counterparty-data-st1
+
+  # Volume attachment
+  DataVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref CounterpartyInstance
+      VolumeId: !Ref DataVolume
+      Device: /dev/sdf
+
+  # IAM Role for the instance
+  CounterpartyInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: CounterpartySnapshotPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateSnapshot
+                  - ec2:DeleteSnapshot
+                  - ec2:DescribeSnapshots
+                  - ec2:DescribeVolumes
+                  - ec2:ModifySnapshotAttribute
+                  - ec2:ResetSnapshotAttribute
+                Resource: '*'
+
+  # Instance profile
+  CounterpartyInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref CounterpartyInstanceRole
+
+  # Optional: Create a new key pair if requested
+  # Note: CloudFormation doesn't currently support returning the private key content,
+  # so we recommend creating the key pair in the console if needed
+  CounterpartyKeyPair:
+    Type: AWS::EC2::KeyPair
+    Condition: CreateNewKey
+    Properties:
+      KeyName: !Ref NewKeyPairName
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-keypair"
+
+  # EC2 Instance
+  CounterpartyInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !If
+        - UseUbuntu2404
+        - !FindInMap [Ubuntu2404, !Ref "AWS::Region", ARM64AMI]
+        - !FindInMap [Ubuntu2204, !Ref "AWS::Region", ARM64AMI]
+      KeyName: !If [CreateNewKey, !Ref CounterpartyKeyPair, !Ref KeyName]
+      IamInstanceProfile: !Ref CounterpartyInstanceProfile
+      SecurityGroupIds:
+        - !If [UseExistingSG, !Ref ExistingSecurityGroupId, !Ref CounterpartySecurityGroup]
+      SubnetId: !Ref SubnetId
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: gp3
+            DeleteOnTermination: true
+      Tags:
+        - Key: Name
+          Value: counterparty-arm64
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Update system
+          apt-get update && apt-get upgrade -y
+          
+          # Install dependencies
+          apt-get install -y apt-transport-https ca-certificates curl software-properties-common git jq htop iotop awscli
+          
+          # Add Docker repository
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+          apt-get update
+          
+          # Install Docker
+          apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+          
+          # Add ubuntu user to docker group
+          usermod -aG docker ubuntu
+          
+          # Mount the ST1 volume
+          mkdir -p /bitcoin-data
+          
+          # Format the volume if needed
+          if ! blkid /dev/nvme1n1; then
+            mkfs -t xfs /dev/nvme1n1
+          fi
+          
+          # Mount the volume
+          mount /dev/nvme1n1 /bitcoin-data
+          
+          # Add to fstab for persistence
+          echo "/dev/nvme1n1 /bitcoin-data xfs defaults,nofail 0 2" >> /etc/fstab
+          
+          # Set permissions
+          chown -R ubuntu:ubuntu /bitcoin-data
+          
+          # Configure Docker to use the ST1 volume
+          mkdir -p /etc/docker
+          cat > /etc/docker/daemon.json << 'EOF'
+          {
+            "data-root": "/bitcoin-data/docker",
+            "storage-driver": "overlay2",
+            "log-driver": "json-file",
+            "log-opts": {
+              "max-size": "100m",
+              "max-file": "3"
+            }
+          }
+          EOF
+          
+          # Restart Docker service
+          systemctl restart docker
+          systemctl enable docker
+          
+          # Clone counterparty-arm64 repository
+          cd /home/ubuntu
+          git clone https://github.com/yourusername/counterparty-arm64.git
+          chown -R ubuntu:ubuntu counterparty-arm64
+          
+          # Run setup script
+          su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version ${BitcoinVersion} --counterparty-branch ${CounterpartyBranch} --counterparty-tag ${CounterpartyTag} --data-dir /bitcoin-data --platform aws"
+          
+          # Start the service
+          su - ubuntu -c "~/start-counterparty.sh mainnet"
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref CounterpartyInstance
+  
+  PublicIp:
+    Description: Public IP address of the instance
+    Value: !GetAtt CounterpartyInstance.PublicIp
+  
+  PublicDns:
+    Description: Public DNS name of the instance
+    Value: !GetAtt CounterpartyInstance.PublicDnsName
+  
+  DataVolumeId:
+    Description: ID of the ST1 data volume
+    Value: !Ref DataVolume
+    
+  SSHCommand:
+    Description: Command to SSH into the instance
+    Value: !Sub "ssh ubuntu@${CounterpartyInstance.PublicDnsName}"
+    
+  KeyPairInfo:
+    Description: Information about the key pair used
+    Value: !If 
+      - CreateNewKey
+      - !Sub "New key pair '${NewKeyPairName}' was created. Download the private key from the EC2 Console."
+      - !Sub "Using existing key pair '${KeyName}'."
+      
+  SecurityGroupInfo:
+    Description: Information about the security group used
+    Value: !If
+      - UseExistingSG
+      - !Sub "Using existing security group '${ExistingSecurityGroupId}'"
+      - !If
+        - CreateNewSG
+        - !Sub "New security group '${CounterpartySecurityGroup}' was created."
+        - "Security group information not available."
+        
+  UbuntuInfo:
+    Description: Information about the Ubuntu version used
+    Value: !If
+      - UseUbuntu2404
+      - "Using Ubuntu 24.04 LTS (Noble Numbat)"
+      - "Using Ubuntu 22.04 LTS (Jammy Jellyfish)"
