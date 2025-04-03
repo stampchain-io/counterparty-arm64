@@ -563,6 +563,12 @@ Resources:
           systemctl restart docker
           systemctl enable docker
           
+          # Create symlink for docker-compose command for compatibility
+          if [ -f "/usr/libexec/docker/cli-plugins/docker-compose" ] && [ ! -f "/usr/bin/docker-compose" ]; then
+            ln -s /usr/libexec/docker/cli-plugins/docker-compose /usr/bin/docker-compose
+            chmod +x /usr/bin/docker-compose
+          fi
+          
           # Clone counterparty-arm64 repository with retry logic
           cd /home/ubuntu
           REPO_URL="https://github.com/stampchain-io/counterparty-arm64.git"
