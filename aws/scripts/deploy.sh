@@ -53,6 +53,7 @@ AWS_VPC_ID=${AWS_VPC_ID:-""}
 AWS_SUBNET_ID=${AWS_SUBNET_ID:-""}
 USE_EXISTING_SG=${USE_EXISTING_SG:-"false"}
 EXISTING_SECURITY_GROUP_ID=${EXISTING_SECURITY_GROUP_ID:-""}
+PUBLIC_RPC_ACCESS=${PUBLIC_RPC_ACCESS:-"false"}
 AWS_KEY_NAME=${AWS_KEY_NAME:-""}
 AWS_INSTANCE_TYPE=${AWS_INSTANCE_TYPE:-"m7g.xlarge"}
 ROOT_VOLUME_SIZE=${ROOT_VOLUME_SIZE:-100}
@@ -188,6 +189,11 @@ else
 fi
 log_info "  Key Name: $AWS_KEY_NAME"
 log_info "  Your IP: $YOUR_IP"
+if [ "$PUBLIC_RPC_ACCESS" = "true" ]; then
+    log_warning "  PUBLIC RPC ACCESS: ENABLED (Counterparty API port 4000 is open to the world)"
+else
+    log_info "  Public RPC Access: Disabled (Counterparty API port 4000 restricted to your IP)"
+fi
 log_info "  Instance Type: $AWS_INSTANCE_TYPE"
 log_info "  Root Volume Size: $ROOT_VOLUME_SIZE GB"
 log_info "  Data Volume Size: $DATA_VOLUME_SIZE GB"
@@ -264,6 +270,7 @@ else
         ParameterKey=CreateNewKeyPair,ParameterValue="false" \
         ParameterKey=UseExistingSecurityGroup,ParameterValue="$USE_EXISTING_SG" \
         ParameterKey=ExistingSecurityGroupId,ParameterValue="$EXISTING_SECURITY_GROUP_ID" \
+        ParameterKey=PublicRpcAccess,ParameterValue="$PUBLIC_RPC_ACCESS" \
         ParameterKey=InstanceType,ParameterValue="$AWS_INSTANCE_TYPE" \
         ParameterKey=RootVolumeSize,ParameterValue="$ROOT_VOLUME_SIZE" \
         ParameterKey=DataVolumeSize,ParameterValue="$DATA_VOLUME_SIZE" \

@@ -48,6 +48,7 @@ Conditions:
   CreateNewSG: !Not [!Condition UseExistingSG]
   UseUbuntu2404: !Equals [!Ref UbuntuVersion, "24.04"]
   UseUbuntu2204: !Equals [!Ref UbuntuVersion, "22.04"]
+  PublicRpcEnabled: !Equals [!Ref PublicRpcAccess, "true"]
 
 Metadata:
   AWS::CloudFormation::Interface:
@@ -133,6 +134,14 @@ Parameters:
     Description: ID of existing security group (only used if UseExistingSecurityGroup is true)
     Type: String
     Default: ""
+    
+  PublicRpcAccess:
+    Description: Allow public access to RPC port 4000? (Warning - Security Risk)
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
   
   InstanceType:
     Description: EC2 instance type (Graviton-based)
@@ -215,11 +224,17 @@ Resources:
           FromPort: 8332
           ToPort: 8332
           CidrIp: !Ref YourIp
-        # Counterparty API
-        - IpProtocol: tcp
-          FromPort: 4000
-          ToPort: 4000
-          CidrIp: !Ref YourIp
+        # Counterparty API - Secured or Public depending on setting
+        - !If
+          - PublicRpcEnabled
+          - IpProtocol: tcp
+            FromPort: 4000
+            ToPort: 4000
+            CidrIp: 0.0.0.0/0
+          - IpProtocol: tcp
+            FromPort: 4000
+            ToPort: 4000
+            CidrIp: !Ref YourIp
       Tags:
         - Key: Name
           Value: !Sub "${AWS::StackName}-sg"

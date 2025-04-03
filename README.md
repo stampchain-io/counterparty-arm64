@@ -9,6 +9,8 @@ This repository provides a complete solution for running Counterparty and Bitcoi
 * Version/branch selection for Counterparty and Bitcoin Core
 * AWS CloudFormation template for one-click deployment
 * Maintenance tools for backups and monitoring
+* Bitcoin synchronization status monitoring
+* Optional public RPC access mode for Counterparty API
 
 ## Prerequisites
 
@@ -152,13 +154,19 @@ USE_EXISTING_SG=false
 # Or use an existing security group
 USE_EXISTING_SG=true
 EXISTING_SECURITY_GROUP_ID=sg-08094ebfd75d4873f
+
+# Public RPC Access (optional)
+# Set to true to allow public access to the Counterparty RPC API (port 4000)
+# Warning: This opens your RPC to public access - use with caution
+PUBLIC_RPC_ACCESS=false
 ```
 
 When creating a new security group, it will automatically:
 - Allow SSH access only from your IP address
 - Open Bitcoin P2P port (8333) to the world for blockchain sync
 - Open Counterparty P2P port (4001) to the world
-- Restrict Bitcoin RPC (8332) and Counterparty API (4000) to your IP address
+- Restrict Bitcoin RPC (8332) to your IP address
+- Restrict Counterparty API (4000) to your IP address by default, or open to the world if PUBLIC_RPC_ACCESS=true
 
 ### Ubuntu Version
 
@@ -216,7 +224,10 @@ counterparty-arm64/
 │   │   └── graviton-st1.yml       # Template for Graviton with ST1
 │   └── scripts/                   # AWS maintenance scripts
 │       ├── create-snapshot.sh     # Backup script
-│       └── check-disk-usage.sh    # Monitoring script
+│       ├── check-disk-usage.sh    # Disk monitoring script
+│       ├── check-bitcoin-sync.sh  # Bitcoin sync status script
+│       ├── monitor-bitcoin.sh     # Automated Bitcoin monitoring
+│       └── deploy.sh              # CloudFormation deployment script
 └── docs/                          # Documentation
 ```
 
@@ -237,6 +248,35 @@ A monitoring script checks disk usage and can send alerts:
 ```bash
 # Set up SNS notifications
 export SNS_TOPIC_ARN="arn:aws:sns:region:account-id:topic-name"
+```
+
+### Bitcoin Sync Status Monitoring
+
+The deployment includes tools to monitor Bitcoin synchronization status:
+
+#### Check Bitcoin Sync Status
+
+```bash
+# Basic sync status check
+~/check-bitcoin-sync.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD
+
+# Detailed sync status with more information
+~/check-bitcoin-sync.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD --verbose
+```
+
+#### Automated Monitoring
+
+Set up automatic monitoring that runs every 10 minutes and logs the status:
+
+```bash
+# Set up monitoring (runs every 10 minutes)
+~/monitor-bitcoin.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD --setup-cron
+
+# Set up monitoring with email alerts
+~/monitor-bitcoin.sh --user bitcoinrpc --pass YOUR_RPC_PASSWORD --email your@email.com --setup-cron
+
+# Check the logs
+cat /var/log/bitcoin-monitor.log
 ```
 
 ## Troubleshooting
