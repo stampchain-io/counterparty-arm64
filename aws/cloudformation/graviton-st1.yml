@@ -542,8 +542,12 @@ Resources:
             fi
           fi
           
-          # Set permissions
+          # Set permissions and create necessary directories
+          mkdir -p /bitcoin-data/docker
+          mkdir -p /bitcoin-data/counterparty-docker-data
+          mkdir -p /bitcoin-data/repo
           chown -R ubuntu:ubuntu /bitcoin-data
+          chmod -R 755 /bitcoin-data
           
           # Configure Docker to use the ST1 volume
           mkdir -p /etc/docker
@@ -558,6 +562,9 @@ Resources:
             }
           }
           EOF
+          
+          # Ensure Docker can access the directory
+          chmod 711 /bitcoin-data/docker
           
           # Restart Docker service
           systemctl restart docker
@@ -587,6 +594,13 @@ Resources:
             sleep 5
           done
           
+          # Clone Counterparty Core as well
+          echo "Cloning Counterparty Core repository..."
+          mkdir -p /bitcoin-data/repo
+          chown -R ubuntu:ubuntu /bitcoin-data/repo
+          cd /bitcoin-data/repo
+          sudo -u ubuntu git clone https://github.com/CounterpartyXCP/counterparty-core.git
+          
           chown -R ubuntu:ubuntu counterparty-arm64
           
           # Copy common.sh to home directory for use by check-sync-status.sh
@@ -602,11 +616,20 @@ Resources:
           chmod +x /home/ubuntu/counterparty-node/bitcoin-entrypoint.sh
           chown -R ubuntu:ubuntu /home/ubuntu/counterparty-node
           
+          # Make sure all Bitcoin-data directories have correct permissions
+          echo "Ensuring proper directory permissions..."
+          chown -R ubuntu:ubuntu /bitcoin-data
+          chmod -R 755 /bitcoin-data
+          sudo -u ubuntu mkdir -p /bitcoin-data/repo/counterparty-core
+          
           # Run setup script - retry logic in case of network issues
           echo "Running setup script..."
           su - ubuntu -c "cd counterparty-arm64 && chmod +x scripts/setup.sh && scripts/setup.sh --bitcoin-version '${BitcoinVersion}' --counterparty-branch '${CounterpartyBranch}' --data-dir '/bitcoin-data' --platform 'aws'" || {
             echo "Setup script failed on first attempt. Waiting 30 seconds and retrying..."
             sleep 30
+            # Reset permissions and try again
+            chown -R ubuntu:ubuntu /bitcoin-data
+            chmod -R 755 /bitcoin-data
             su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version '${BitcoinVersion}' --counterparty-branch '${CounterpartyBranch}' --data-dir '/bitcoin-data' --platform 'aws'"
           }
           
