@@ -586,16 +586,19 @@ Resources:
           cd /home/ubuntu
           REPO_URL="https://github.com/stampchain-io/counterparty-arm64.git"
           # Optional GitHub token parameter for private repository access
-          GITHUB_TOKEN="${GitHubToken}"
+          # Use the GitHubToken parameter passed to CloudFormation
+          if [ ! -z "${GitHubToken}" ]; then
+            echo "GitHub token detected, will use for repository access"
+          fi
           MAX_RETRIES=3
           
           for i in $(seq 1 $MAX_RETRIES); do
             echo "Cloning repository (attempt $i of $MAX_RETRIES)..."
             
-            if [ -n "$GITHUB_TOKEN" ]; then
+            if [ -n "${GitHubToken}" ]; then
               # Use token for private repository
               echo "Using GitHub token for private repository access"
-              REPO_WITH_TOKEN="https://${GITHUB_TOKEN}@github.com/stampchain-io/counterparty-arm64.git"
+              REPO_WITH_TOKEN="https://${GitHubToken}@github.com/stampchain-io/counterparty-arm64.git"
               git clone $REPO_WITH_TOKEN && break
             else
               # Try public access
@@ -621,9 +624,9 @@ Resources:
           # Clone Counterparty Core - this is a public repo but could be changed
           COUNTERPARTY_REPO_URL="https://github.com/CounterpartyXCP/counterparty-core.git"
           
-          if [ -n "$GITHUB_TOKEN" ]; then
+          if [ -n "${GitHubToken}" ]; then
             # Use token for private repository - just in case it becomes private
-            COUNTERPARTY_REPO_WITH_TOKEN="https://${GITHUB_TOKEN}@github.com/CounterpartyXCP/counterparty-core.git"
+            COUNTERPARTY_REPO_WITH_TOKEN="https://${GitHubToken}@github.com/CounterpartyXCP/counterparty-core.git"
             sudo -u ubuntu git clone $COUNTERPARTY_REPO_WITH_TOKEN
           else
             # Use public URL
@@ -691,16 +694,14 @@ Resources:
           mkdir -p /home/ubuntu/.counterparty-arm64
           
           # Create a config.env file for Docker Compose
-          cat > /home/ubuntu/.counterparty-arm64/config.env << EOF
-# Counterparty ARM64 Configuration
-# Generated on $(date)
-COUNTERPARTY_DOCKER_DATA=/bitcoin-data
-COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core
-BITCOIN_VERSION=${BITCOIN_VERSION}
-COUNTERPARTY_BRANCH=${COUNTERPARTY_BRANCH}
-COUNTERPARTY_TAG=${COUNTERPARTY_TAG}
-NETWORK_PROFILE=${NetworkProfile}
-EOF
+          echo "# Counterparty ARM64 Configuration" > /home/ubuntu/.counterparty-arm64/config.env
+          echo "# Generated on $(date)" >> /home/ubuntu/.counterparty-arm64/config.env
+          echo "COUNTERPARTY_DOCKER_DATA=/bitcoin-data" >> /home/ubuntu/.counterparty-arm64/config.env
+          echo "COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core" >> /home/ubuntu/.counterparty-arm64/config.env 
+          echo "BITCOIN_VERSION=${BitcoinVersion}" >> /home/ubuntu/.counterparty-arm64/config.env
+          echo "COUNTERPARTY_BRANCH=${CounterpartyBranch}" >> /home/ubuntu/.counterparty-arm64/config.env
+          echo "COUNTERPARTY_TAG=${CounterpartyTag}" >> /home/ubuntu/.counterparty-arm64/config.env
+          echo "NETWORK_PROFILE=${NetworkProfile}" >> /home/ubuntu/.counterparty-arm64/config.env
           chown -R ubuntu:ubuntu /home/ubuntu/.counterparty-arm64
           
           # Now use the environment variables for building
