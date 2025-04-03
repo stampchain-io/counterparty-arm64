@@ -593,11 +593,14 @@ Resources:
           cp /home/ubuntu/counterparty-arm64/scripts/common.sh /home/ubuntu/
           chmod +x /home/ubuntu/common.sh
           
-          # Copy bitcoin-entrypoint.sh to counterparty-node directory
+          # Copy all Docker files to counterparty-node directory
           mkdir -p /home/ubuntu/counterparty-node
           cp /home/ubuntu/counterparty-arm64/docker/bitcoin-entrypoint.sh /home/ubuntu/counterparty-node/
+          cp /home/ubuntu/counterparty-arm64/docker/Dockerfile.bitcoind /home/ubuntu/counterparty-node/
+          cp /home/ubuntu/counterparty-arm64/docker/docker-compose.yml /home/ubuntu/counterparty-node/
+          cp /home/ubuntu/counterparty-arm64/docker/docker-compose.build.yml /home/ubuntu/counterparty-node/
           chmod +x /home/ubuntu/counterparty-node/bitcoin-entrypoint.sh
-          chown ubuntu:ubuntu /home/ubuntu/counterparty-node/bitcoin-entrypoint.sh
+          chown -R ubuntu:ubuntu /home/ubuntu/counterparty-node
           
           # Run setup script - retry logic in case of network issues
           echo "Running setup script..."
@@ -619,9 +622,24 @@ Resources:
           sed -i '/^REPO_DIR=.*/d' /home/ubuntu/check-sync-status.sh
           sed -i '/^source "\$REPO_DIR\/scripts\/common.sh"/d' /home/ubuntu/check-sync-status.sh || true
           
-          # Start the service with the selected network profile
+          # Update docker-compose.yml to use locally built images instead of pulling from Docker Hub
+          echo "Updating docker-compose.yml to use locally built images..."
+          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: counterparty-node-bitcoind:latest/g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: counterparty-node-counterparty-core:latest|g' ~/counterparty-node/docker-compose.yml"
+          
+          # Build the Docker images first, then start the services
+          echo "Building Docker images for ${NetworkProfile} profile..."
+          su - ubuntu -c "cd ~/counterparty-node && docker compose -f docker-compose.build.yml build bitcoind"
+          
+          # Start the service with the selected network profile 
           echo "Starting Counterparty service with ${NetworkProfile} profile..."
-          su - ubuntu -c "~/start-counterparty.sh ${NetworkProfile}" || echo "Failed to start Counterparty service, check logs for details"
+          su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d bitcoind" || echo "Failed to start Bitcoin service, check logs for details"
+          
+          # Add check-sync-status.sh to cron for hourly checks
+          (crontab -l 2>/dev/null; echo "0 * * * * /home/ubuntu/check-sync-status.sh > /home/ubuntu/sync-status.log 2>&1") | crontab -
+          
+          echo "Deployment completed. Bitcoin node is now starting. Counterparty service will be started once bootstrapping is complete."
+          echo "Check status with: ~/check-sync-status.sh"
 
 Outputs:
   InstanceId:
