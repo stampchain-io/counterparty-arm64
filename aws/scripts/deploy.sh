@@ -119,6 +119,10 @@ while [[ $# -gt 0 ]]; do
         DRY_RUN=true
         shift
         ;;
+        --auto-confirm)
+        AUTO_CONFIRM=true
+        shift
+        ;;
         --help)
         echo "Usage: deploy.sh [OPTIONS]"
         echo "Options:"
@@ -130,6 +134,7 @@ while [[ $# -gt 0 ]]; do
         echo "  --your-ip IP                Your IP address with CIDR (e.g., 1.2.3.4/32)"
         echo "  --region REGION             AWS region (default: us-east-1)"
         echo "  --dry-run                   Validate template without creating resources"
+        echo "  --auto-confirm              Skip confirmation prompt"
         echo "  --help                      Show this help message"
         exit 0
         ;;
@@ -191,9 +196,9 @@ log_info "  Counterparty Branch: $COUNTERPARTY_BRANCH"
 log_info "  Ubuntu Version: $UBUNTU_VERSION"
 
 # Confirm deployment
-if [ "$DRY_RUN" = "true" ]; then
-    # Skip confirmation for dry run
-    REPLY="y"
+if [ "$DRY_RUN" = "true" ] || [ "$AUTO_CONFIRM" = "true" ]; then
+    # Skip confirmation for dry run or auto-confirm
+    log_info "Auto-confirm enabled or dry run, skipping prompt."
 else
     read -p "Continue with deployment? [y/N] " -n 1 -r
     echo
