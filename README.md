@@ -168,7 +168,7 @@ When creating a new security group, it will automatically:
 - Restrict Bitcoin RPC (8332) to your IP address
 - For Counterparty API (port 4000):
   - Allow access from your IP address
-  - Allow access from all private IP ranges within AWS VPC (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+  - Allow access from all RFC1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) which covers all standard AWS VPC CIDRs
   - Optionally open to the world if PUBLIC_RPC_ACCESS=true
 
 ### Ubuntu Version
