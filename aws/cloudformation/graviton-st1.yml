@@ -677,35 +677,38 @@ Resources:
           sed -i '/^REPO_DIR=.*/d' /home/ubuntu/check-sync-status.sh
           sed -i '/^source "\$REPO_DIR\/scripts\/common.sh"/d' /home/ubuntu/check-sync-status.sh || true
           
-          # Update docker-compose.yml to use locally built images instead of pulling from Docker Hub
-          echo "Updating docker-compose.yml to use locally built images..."
-          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: counterparty-node_bitcoind:latest/g' ~/counterparty-node/docker-compose.yml"
-          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: counterparty-node_counterparty-core:latest|g' ~/counterparty-node/docker-compose.yml"
+          # Update docker-compose.yml to use pre-built Docker Hub images
+          echo "Updating docker-compose.yml to use Docker Hub images..."
           
-          # Also update the testnet4 and regtest profiles if they exist
-          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: counterparty-node_bitcoind:latest/g' ~/counterparty-node/docker-compose.yml"
-          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: counterparty-node_counterparty-core:latest|g' ~/counterparty-node/docker-compose.yml"
-          
-          # Build both Docker images first, then start the services
-          echo "Building Docker images for ${NetworkProfile} profile..."
-          
-          # Export the necessary environment variables for the build
           # Create config directory if it doesn't exist
           mkdir -p /home/ubuntu/.counterparty-arm64
           
-          # Create a config.env file for Docker Compose
-          echo "# Counterparty ARM64 Configuration" > /home/ubuntu/.counterparty-arm64/config.env
-          echo "# Generated on $(date)" >> /home/ubuntu/.counterparty-arm64/config.env
-          echo "COUNTERPARTY_DOCKER_DATA=/bitcoin-data" >> /home/ubuntu/.counterparty-arm64/config.env
-          echo "COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core" >> /home/ubuntu/.counterparty-arm64/config.env 
-          echo "BITCOIN_VERSION=${BitcoinVersion}" >> /home/ubuntu/.counterparty-arm64/config.env
-          echo "COUNTERPARTY_BRANCH=${CounterpartyBranch}" >> /home/ubuntu/.counterparty-arm64/config.env
-          echo "COUNTERPARTY_TAG=${CounterpartyTag}" >> /home/ubuntu/.counterparty-arm64/config.env
-          echo "NETWORK_PROFILE=${NetworkProfile}" >> /home/ubuntu/.counterparty-arm64/config.env
+          # Create a config.env file for Docker Compose with Docker Hub image references
+          cat > /home/ubuntu/.counterparty-arm64/config.env << EOL
+# Counterparty ARM64 Configuration
+# Generated on $(date)
+COUNTERPARTY_DOCKER_DATA=/bitcoin-data
+COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core
+BITCOIN_VERSION=${BitcoinVersion}
+COUNTERPARTY_BRANCH=${CounterpartyBranch}
+COUNTERPARTY_TAG=${CounterpartyTag}
+NETWORK_PROFILE=${NetworkProfile}
+
+# Docker Hub images
+DOCKERHUB_IMAGE_BITCOIND=xcparty/bitcoind-arm64
+DOCKERHUB_IMAGE_COUNTERPARTY=xcparty/counterparty-core-arm64
+EOL
           chown -R ubuntu:ubuntu /home/ubuntu/.counterparty-arm64
           
-          # Now use the environment variables for building
-          su - ubuntu -c "export COUNTERPARTY_DOCKER_DATA=/bitcoin-data && export COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core && cd ~/counterparty-node && docker compose -f docker-compose.build.yml build"
+          # Create .env file for docker-compose
+          cp /home/ubuntu/.counterparty-arm64/config.env /home/ubuntu/counterparty-node/.env
+          chown ubuntu:ubuntu /home/ubuntu/counterparty-node/.env
+          
+          # Update docker-compose.yml to use Docker Hub images
+          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: \${DOCKERHUB_IMAGE_BITCOIND:-xcparty\/bitcoind-arm64}:\${BITCOIN_VERSION:-${BitcoinVersion}}/g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: \${DOCKERHUB_IMAGE_COUNTERPARTY:-xcparty\/counterparty-core-arm64}:\${COUNTERPARTY_BRANCH:-${CounterpartyBranch}}|g' ~/counterparty-node/docker-compose.yml"
+          
+          echo "Pulling Docker images for ${NetworkProfile} profile..."
           
           # Start both Bitcoin and Counterparty with the selected network profile
           echo "Starting Bitcoin service with ${NetworkProfile} profile..."
