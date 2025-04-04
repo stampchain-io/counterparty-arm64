@@ -721,10 +721,41 @@ Resources:
           cp /home/ubuntu/counterparty-arm64/check-and-start-counterparty.sh /home/ubuntu/
           chmod +x /home/ubuntu/check-and-start-counterparty.sh
           
-          # Add to crontab to check every 5 minutes if bitcoin is synced enough to start counterparty
-          (crontab -l 2>/dev/null; echo "*/5 * * * * /home/ubuntu/check-and-start-counterparty.sh >> /home/ubuntu/counterparty-startup.log 2>&1") | crontab -
+          # Install cron if not already installed
+          apt-get update && apt-get install -y cron
+          systemctl enable cron
+          systemctl start cron
           
-          # Add check-sync-status.sh to cron for hourly checks
+          # Modify the check-and-start-counterparty.sh script to self-disable the cron job after Counterparty starts
+          cat > /home/ubuntu/cron-helper.sh << 'CRONHELPER'
+#!/bin/bash
+# Helper script to manage the Counterparty startup cron job
+
+# Run the check script
+/home/ubuntu/check-and-start-counterparty.sh >> /home/ubuntu/counterparty-startup.log 2>&1
+
+# If Counterparty is running, disable the startup cron job
+if docker ps | grep -q "counterparty-core"; then
+    # Keep a record that we're disabling the cron
+    echo "$(date): Counterparty detected as running. Disabling startup cron job." >> /home/ubuntu/counterparty-startup.log
+    
+    # Update crontab to remove the startup job but keep the hourly status check
+    (crontab -l | grep -v "cron-helper.sh") | crontab -
+    
+    # Add a final log entry
+    echo "$(date): Startup cron job disabled. Counterparty is now running." >> /home/ubuntu/counterparty-startup.log
+fi
+CRONHELPER
+
+          # Make the helper script executable
+          chmod +x /home/ubuntu/cron-helper.sh
+          chown ubuntu:ubuntu /home/ubuntu/cron-helper.sh
+          
+          # Add to crontab to check every 5 minutes if bitcoin is synced enough to start counterparty
+          # Using the helper script that will self-disable after success
+          (crontab -l 2>/dev/null; echo "*/5 * * * * /home/ubuntu/cron-helper.sh") | crontab -
+          
+          # Add check-sync-status.sh to cron for hourly checks (this will remain)
           (crontab -l 2>/dev/null; echo "0 * * * * /home/ubuntu/check-sync-status.sh > /home/ubuntu/sync-status.log 2>&1") | crontab -
           
           echo "Deployment completed. Bitcoin node is now starting. Counterparty service will be started once bootstrapping is complete."
