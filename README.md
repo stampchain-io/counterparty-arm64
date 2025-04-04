@@ -295,17 +295,15 @@ The workflow automatically uploads template files as artifacts and updates the D
 
 ### Available Images
 
-_This section is automatically updated by GitHub Actions showing current Docker Hub image status._
-
 | Image | Tags | Status | Size |
 |-------|------|--------|------|
-| `xcparty/bitcoind-arm64` | `26.0` | ✅ Available | ~150 MB |
-| `xcparty/counterparty-core-arm64` | `develop` | 🔄 Building | ~800 MB |
+| `xcparty/bitcoind-arm64` | `26.0` | ✅ Available | ~76.9 MB |
+| `xcparty/bitcoind-arm64` | `cache` | ✅ Available | ~26.0 MB |
+| `xcparty/bitcoind-arm64` | `latest` | ✅ Available | ~76.9 MB |
+| `xcparty/counterparty-core-arm64` | `develop` | ✅ Available | ~1207.1 MB |
 
-> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: 2025-04-03 22:55 UTC
 
-These images are built through our GitHub Actions workflow. For more information about the build process, see [ARM64_BUILD.md](ARM64_BUILD.md).
-
+> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: 2025-04-04 19:49 UTC
 ## Directory Structure
 
 ```
