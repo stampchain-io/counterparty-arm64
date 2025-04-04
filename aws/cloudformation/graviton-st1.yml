@@ -671,31 +671,30 @@ Resources:
             su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version '${BitcoinVersion}' --counterparty-branch '${CounterpartyBranch}' --data-dir '/bitcoin-data' --platform 'aws'"
           }
           
-          # Prepare default bitcoin.conf to ensure ZMQ settings are correct
+          # Create bitcoin.conf file with proper ZMQ settings
           mkdir -p /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin
-          cat > /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf << 'EOL'
-# Bitcoin Core configuration file
-# Created by CloudFormation template
-
-# RPC Settings
-rpcuser=rpc
-rpcpassword=rpc
-rpcallowip=0.0.0.0/0
-rpcbind=0.0.0.0
-server=1
-listen=1
-addresstype=legacy
-txindex=1
-prune=0
-dbcache=4000
-mempoolfullrbf=1
-
-# ZMQ Settings
-zmqpubrawtx=tcp://0.0.0.0:9332
-zmqpubhashtx=tcp://0.0.0.0:9332
-zmqpubsequence=tcp://0.0.0.0:9332
-zmqpubrawblock=tcp://0.0.0.0:9333
-EOL
+          cat << 'EOF' > /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf
+          # Bitcoin Core configuration file - Created by CloudFormation template
+          
+          # RPC Settings
+          rpcuser=rpc
+          rpcpassword=rpc
+          rpcallowip=0.0.0.0/0
+          rpcbind=0.0.0.0
+          server=1
+          listen=1
+          addresstype=legacy
+          txindex=1
+          prune=0
+          dbcache=4000
+          mempoolfullrbf=1
+          
+          # ZMQ Settings
+          zmqpubrawtx=tcp://0.0.0.0:9332
+          zmqpubhashtx=tcp://0.0.0.0:9332
+          zmqpubsequence=tcp://0.0.0.0:9332
+          zmqpubrawblock=tcp://0.0.0.0:9333
+          EOF
           chmod 600 /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf
           chown -R ubuntu:ubuntu /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin
           
