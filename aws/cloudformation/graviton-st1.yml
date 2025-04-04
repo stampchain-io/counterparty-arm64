@@ -142,7 +142,9 @@ Parameters:
   ExistingSecurityGroupId:
     Description: ID of existing security group (only used if UseExistingSecurityGroup is true)
     Type: String
-    Default: ""
+    Default: "sg-xxxxxxxxxxxxxxxxx"
+    AllowedPattern: "^$|^sg-[a-zA-Z0-9]{8}$|^sg-[a-zA-Z0-9]{17}$"
+    ConstraintDescription: "Security Group ID must be in the format sg-xxxxxxxx or sg-xxxxxxxxxxxxxxxxx"
     
   PublicRpcAccess:
     Description: Allow public access to RPC port 4000? (Warning - Security Risk)
@@ -684,20 +686,21 @@ Resources:
           mkdir -p /home/ubuntu/.counterparty-arm64
           
           # Create a config.env file for Docker Compose with Docker Hub image references
-          cat > /home/ubuntu/.counterparty-arm64/config.env << EOL
-# Counterparty ARM64 Configuration
-# Generated on $(date)
-COUNTERPARTY_DOCKER_DATA=/bitcoin-data
-COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core
-BITCOIN_VERSION=${BitcoinVersion}
-COUNTERPARTY_BRANCH=${CounterpartyBranch}
-COUNTERPARTY_TAG=${CounterpartyTag}
-NETWORK_PROFILE=${NetworkProfile}
-
-# Docker Hub images
-DOCKERHUB_IMAGE_BITCOIND=xcparty/bitcoind-arm64
-DOCKERHUB_IMAGE_COUNTERPARTY=xcparty/counterparty-core-arm64
-EOL
+          # Using printf to avoid heredoc YAML parsing issues
+          printf "%s\n" \
+            "# Counterparty ARM64 Configuration" \
+            "# Generated on $(date)" \
+            "COUNTERPARTY_DOCKER_DATA=/bitcoin-data" \
+            "COUNTERPARTY_REPO=/bitcoin-data/repo/counterparty-core" \
+            "BITCOIN_VERSION=${BitcoinVersion}" \
+            "COUNTERPARTY_BRANCH=${CounterpartyBranch}" \
+            "COUNTERPARTY_TAG=${CounterpartyTag}" \
+            "NETWORK_PROFILE=${NetworkProfile}" \
+            "" \
+            "# Docker Hub images" \
+            "DOCKERHUB_IMAGE_BITCOIND=xcparty/bitcoind-arm64" \
+            "DOCKERHUB_IMAGE_COUNTERPARTY=xcparty/counterparty-core-arm64" \
+            > /home/ubuntu/.counterparty-arm64/config.env
           chown -R ubuntu:ubuntu /home/ubuntu/.counterparty-arm64
           
           # Create .env file for docker-compose
@@ -705,8 +708,8 @@ EOL
           chown ubuntu:ubuntu /home/ubuntu/counterparty-node/.env
           
           # Update docker-compose.yml to use Docker Hub images
-          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: \${DOCKERHUB_IMAGE_BITCOIND:-xcparty\/bitcoind-arm64}:\${BITCOIN_VERSION:-${BitcoinVersion}}/g' ~/counterparty-node/docker-compose.yml"
-          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: \${DOCKERHUB_IMAGE_COUNTERPARTY:-xcparty\/counterparty-core-arm64}:\${COUNTERPARTY_BRANCH:-${CounterpartyBranch}}|g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: xcparty\/bitcoind-arm64:${BitcoinVersion}/g' ~/counterparty-node/docker-compose.yml"
+          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: xcparty\/counterparty-core-arm64:${CounterpartyBranch}|g' ~/counterparty-node/docker-compose.yml"
           
           echo "Pulling Docker images for ${NetworkProfile} profile..."
           
@@ -770,7 +773,10 @@ Outputs:
     Value: !If
       - UseUbuntu2404
       - "Using Ubuntu 24.04 LTS (Noble Numbat)"
-      - "Using Ubuntu 22.04 LTS (Jammy Jellyfish)"
+      - !If
+        - UseUbuntu2204
+        - "Using Ubuntu 22.04 LTS (Jammy Jellyfish)"
+        - "Using unspecified Ubuntu version"
       
   NetworkInfo:
     Description: Information about the selected network profile
