@@ -88,17 +88,37 @@ The EC2 instance needs permissions to:
 
 **Problem:** Counterparty container starts but can't connect to Bitcoin Core.
 
-**Solution:** Check the logs and ensure the Bitcoin container is running:
+**Solution:** Check the logs and ensure the Bitcoin container is running. Counterparty will automatically retry connecting to Bitcoin once it's available:
 
 ```bash
+# Check container status
+docker ps
+
 # Check logs
 docker logs counterparty-core-counterparty-core-1
 
 # Check if Bitcoin is running
 docker logs counterparty-core-bitcoind-1
 
-# Restart services
-~/start-counterparty.sh mainnet
+# If needed, restart services
+docker compose --profile mainnet restart
+```
+
+### Container Startup Order Issues
+
+**Problem:** When deploying, the Counterparty container fails to start because Bitcoin isn't ready yet.
+
+**Solution:** This should rarely happen with our improved deployment, but if it does:
+
+```bash
+# Start Bitcoin first
+cd ~/counterparty-node && docker compose --profile mainnet up -d bitcoind
+
+# Wait for Bitcoin to initialize (about 30 seconds)
+sleep 30
+
+# Then start Counterparty
+cd ~/counterparty-node && docker compose --profile mainnet up -d
 ```
 
 ### Counterparty Build Fails
