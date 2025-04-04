@@ -1,4 +1,4 @@
-name: Build and Push ARM64 Docker Images (Free Plan)
+name: Build ARM64 Docker Images (Free Tier)
 
 on:
   workflow_dispatch:
@@ -25,6 +25,9 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
