@@ -10,13 +10,25 @@ if [ -f "$CONFIG_DIR/config.env" ]; then
     source "$CONFIG_DIR/config.env"
 fi
 
-# Constants 
-BITCOIN_CONTAINER="bitcoind"
-COUNTERPARTY_CONTAINER="counterparty-core"
+# Detect container names based on docker-compose pattern
+# This handles both direct container names and docker-compose prefixed names
+if docker ps | grep -q "counterparty-node-bitcoind"; then
+    BITCOIN_CONTAINER="counterparty-node-bitcoind-1"
+else
+    BITCOIN_CONTAINER="bitcoind"
+fi
+
+if docker ps | grep -q "counterparty-node-counterparty-core"; then
+    COUNTERPARTY_CONTAINER="counterparty-node-counterparty-core-1"
+else
+    COUNTERPARTY_CONTAINER="counterparty-core"
+fi
+
+# Constants
 BITCOIN_RPC_USER="rpc"
 BITCOIN_RPC_PASSWORD="rpc"
 BITCOIN_RPC_PORT="8332"
-MINIMUM_SYNC=0.1  # Only start Counterparty if we're at least 10% synchronized
+MINIMUM_SYNC=0.001  # Only start Counterparty if we're at least 0.1% synchronized
 
 # Set default values for environment variables if not defined in config.env
 export COUNTERPARTY_DOCKER_DATA=${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}
@@ -53,7 +65,9 @@ if docker exec $BITCOIN_CONTAINER bitcoin-cli -rpcuser=$BITCOIN_RPC_USER -rpcpas
     
     # Only start Counterparty if we're at least at MINIMUM_SYNC
     if (( $(echo "$VERIFICATION_PROGRESS < $MINIMUM_SYNC" | bc -l) )); then
-        log_warning "  Status: SYNCING - Not starting Counterparty yet (waiting for at least ${MINIMUM_SYNC}% sync)"
+        # Convert MINIMUM_SYNC to percentage for display (multiply by 100)
+        DISPLAY_PERCENTAGE=$(echo "${MINIMUM_SYNC} * 100" | bc)
+        log_warning "  Status: SYNCING - Not starting Counterparty yet (waiting for at least ${DISPLAY_PERCENTAGE}% sync)"
         exit 0
     fi
     
