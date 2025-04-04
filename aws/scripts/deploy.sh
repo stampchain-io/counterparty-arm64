@@ -79,6 +79,7 @@ fi
 
 # Parse command line arguments
 DRY_RUN=false
+WAIT_TIME=120  # Default wait time: 2 minutes (120 seconds)
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -118,6 +119,15 @@ while [[ $# -gt 0 ]]; do
         shift
         shift
         ;;
+        --wait-time)
+        WAIT_TIME="$2"
+        shift
+        shift
+        ;;
+        --no-wait)
+        WAIT_TIME=0
+        shift
+        ;;
         --dry-run)
         DRY_RUN=true
         shift
@@ -136,6 +146,8 @@ while [[ $# -gt 0 ]]; do
         echo "  --key-name NAME             EC2 key pair name"
         echo "  --your-ip IP                Your IP address with CIDR (e.g., 1.2.3.4/32)"
         echo "  --region REGION             AWS region (default: us-east-1)"
+        echo "  --wait-time SECONDS         Time to wait after stack creation before checking status (default: 120)"
+        echo "  --no-wait                   Skip waiting after stack creation"
         echo "  --dry-run                   Validate template without creating resources"
         echo "  --auto-confirm              Skip confirmation prompt"
         echo "  --help                      Show this help message"
@@ -310,10 +322,28 @@ if aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --re
     log_info "Instance Public IP: $public_ip"
     log_info "SSH Command: $ssh_command"
     log_info ""
-    log_info "Waiting 5 minutes for the instance to complete its setup..."
-    sleep 300  # Wait 5 minutes (300 seconds)
     
-    log_info "Checking deployment status..."
+    if [ "$WAIT_TIME" -gt 0 ]; then
+        if [ "$WAIT_TIME" -ge 60 ]; then
+            # Calculate minutes and seconds for display
+            minutes=$((WAIT_TIME / 60))
+            seconds=$((WAIT_TIME % 60))
+            if [ "$seconds" -eq 0 ]; then
+                log_info "Waiting $minutes minute(s) for the instance to complete its setup..."
+            else
+                log_info "Waiting $minutes minute(s) and $seconds second(s) for the instance to complete its setup..."
+            fi
+        else
+            log_info "Waiting $WAIT_TIME second(s) for the instance to complete its setup..."
+        fi
+        
+        sleep $WAIT_TIME
+        log_info "Checking deployment status..."
+    else
+        log_info "Skipping wait period. Your instance will continue setting up in the background."
+        log_info "You can check the status later with: ssh ubuntu@$public_ip './check-sync-status.sh'"
+        exit 0
+    fi
     if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$public_ip "docker ps" 2>/dev/null; then
         log_success "Services are running! You can now access your Counterparty node."
         ssh -o StrictHostKeyChecking=no ubuntu@$public_ip "./check-sync-status.sh"
