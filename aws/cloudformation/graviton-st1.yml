@@ -726,26 +726,27 @@ Resources:
           systemctl enable cron
           systemctl start cron
           
-          # Modify the check-and-start-counterparty.sh script to self-disable the cron job after Counterparty starts
-          cat > /home/ubuntu/cron-helper.sh << 'CRONHELPER'
-#!/bin/bash
-# Helper script to manage the Counterparty startup cron job
-
-# Run the check script
-/home/ubuntu/check-and-start-counterparty.sh >> /home/ubuntu/counterparty-startup.log 2>&1
-
-# If Counterparty is running, disable the startup cron job
-if docker ps | grep -q "counterparty-core"; then
-    # Keep a record that we're disabling the cron
-    echo "$(date): Counterparty detected as running. Disabling startup cron job." >> /home/ubuntu/counterparty-startup.log
-    
-    # Update crontab to remove the startup job but keep the hourly status check
-    (crontab -l | grep -v "cron-helper.sh") | crontab -
-    
-    # Add a final log entry
-    echo "$(date): Startup cron job disabled. Counterparty is now running." >> /home/ubuntu/counterparty-startup.log
-fi
-CRONHELPER
+          # Create a script to manage the Counterparty startup cron job
+          # The script will self-disable once Counterparty is running
+          printf '%s\n' \
+            '#!/bin/bash' \
+            '# Helper script to manage the Counterparty startup cron job' \
+            '' \
+            '# Run the check script' \
+            '/home/ubuntu/check-and-start-counterparty.sh >> /home/ubuntu/counterparty-startup.log 2>&1' \
+            '' \
+            '# If Counterparty is running, disable the startup cron job' \
+            'if docker ps | grep -q "counterparty-core"; then' \
+            '    # Keep a record that we are disabling the cron' \
+            '    echo "$(date): Counterparty detected as running. Disabling startup cron job." >> /home/ubuntu/counterparty-startup.log' \
+            '    ' \
+            '    # Update crontab to remove the startup job but keep the hourly status check' \
+            '    (crontab -l | grep -v "cron-helper.sh") | crontab -' \
+            '    ' \
+            '    # Add a final log entry' \
+            '    echo "$(date): Startup cron job disabled. Counterparty is now running." >> /home/ubuntu/counterparty-startup.log' \
+            'fi' \
+            > /home/ubuntu/cron-helper.sh
 
           # Make the helper script executable
           chmod +x /home/ubuntu/cron-helper.sh
