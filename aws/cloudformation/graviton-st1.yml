@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Counterparty ARM64 on AWS Graviton with ST1 volume'
+Description: 'Counterparty ARM64 on AWS Graviton with ST1 volume - Cost-optimized'
 
 # Define mappings for AMI IDs
 Mappings:
@@ -158,13 +158,17 @@ Parameters:
   InstanceType:
     Description: EC2 instance type (Graviton-based)
     Type: String
-    Default: m7g.xlarge
+    Default: m7g.large
     AllowedValues:
-      - m7g.large
-      - m7g.xlarge
-      - m7g.2xlarge
-      - c7g.xlarge
-      - c7g.2xlarge
+      - t4g.large     # Lowest cost, burstable performance
+      - t4g.xlarge    # Burstable, more memory
+      - m6g.large     # Previous gen, consistent performance
+      - m6g.xlarge    # Previous gen, higher memory
+      - m7g.large     # Current gen, good balance (recommended)
+      - m7g.xlarge    # Current gen, higher memory
+      - m7g.2xlarge   # Current gen, highest performance
+      - c7g.large     # Compute optimized, lower cost
+      - c7g.xlarge    # Compute optimized, higher performance
     ConstraintDescription: Must be a valid Graviton-based instance type.
   
   RootVolumeSize:
