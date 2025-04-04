@@ -80,6 +80,8 @@ fi
 # Parse command line arguments
 DRY_RUN=false
 WAIT_TIME=120  # Default wait time: 2 minutes (120 seconds)
+UPDATE_STACK=false  # Default is to create new stack
+UPDATE_COUNTERPARTY_ONLY=false  # Default is to update all parameters
 
 while [[ $# -gt 0 ]]; do
     key="$1"
@@ -128,6 +130,15 @@ while [[ $# -gt 0 ]]; do
         WAIT_TIME=0
         shift
         ;;
+        --update-stack)
+        UPDATE_STACK=true
+        shift
+        ;;
+        --update-counterparty-only)
+        UPDATE_STACK=true
+        UPDATE_COUNTERPARTY_ONLY=true
+        shift
+        ;;
         --dry-run)
         DRY_RUN=true
         shift
@@ -148,6 +159,8 @@ while [[ $# -gt 0 ]]; do
         echo "  --region REGION             AWS region (default: us-east-1)"
         echo "  --wait-time SECONDS         Time to wait after stack creation before checking status (default: 120)"
         echo "  --no-wait                   Skip waiting after stack creation"
+        echo "  --update-stack              Update existing stack instead of creating new one"
+        echo "  --update-counterparty-only  Update only Counterparty version parameters"
         echo "  --dry-run                   Validate template without creating resources"
         echo "  --auto-confirm              Skip confirmation prompt"
         echo "  --help                      Show this help message"
@@ -269,47 +282,112 @@ if [ "$DRY_RUN" = "true" ]; then
     fi
     exit $?
 else
-    # Create CloudFormation stack
-    log_info "Creating CloudFormation stack: $STACK_NAME..."
-    aws cloudformation create-stack \
-      --region "$AWS_REGION" \
-      --stack-name "$STACK_NAME" \
-      --template-body "file://$TEMPLATE_PATH" \
-      --capabilities CAPABILITY_IAM \
-      --parameters \
-        ParameterKey=VpcId,ParameterValue="$AWS_VPC_ID" \
-        ParameterKey=SubnetId,ParameterValue="$AWS_SUBNET_ID" \
-        ParameterKey=KeyName,ParameterValue="$AWS_KEY_NAME" \
-        ParameterKey=YourIp,ParameterValue="$YOUR_IP" \
-        ParameterKey=CreateNewKeyPair,ParameterValue="false" \
-        ParameterKey=UseExistingSecurityGroup,ParameterValue="$USE_EXISTING_SG" \
-        ParameterKey=ExistingSecurityGroupId,ParameterValue="$EXISTING_SECURITY_GROUP_ID" \
-        ParameterKey=PublicRpcAccess,ParameterValue="$PUBLIC_RPC_ACCESS" \
-        ParameterKey=InstanceType,ParameterValue="$AWS_INSTANCE_TYPE" \
-        ParameterKey=RootVolumeSize,ParameterValue="$ROOT_VOLUME_SIZE" \
-        ParameterKey=DataVolumeSize,ParameterValue="$DATA_VOLUME_SIZE" \
-        ParameterKey=BitcoinVersion,ParameterValue="$BITCOIN_VERSION" \
-        ParameterKey=CounterpartyBranch,ParameterValue="$COUNTERPARTY_BRANCH" \
-        ParameterKey=CounterpartyTag,ParameterValue="$COUNTERPARTY_TAG" \
-        ParameterKey=UbuntuVersion,ParameterValue="$UBUNTU_VERSION" \
-        ParameterKey=GitHubToken,ParameterValue="$GITHUB_TOKEN" \
-        ParameterKey=NetworkProfile,ParameterValue="$NETWORK_PROFILE"
+    # Prepare parameters array
+    ALL_PARAMETERS=(
+        "ParameterKey=VpcId,ParameterValue=\"$AWS_VPC_ID\""
+        "ParameterKey=SubnetId,ParameterValue=\"$AWS_SUBNET_ID\""
+        "ParameterKey=KeyName,ParameterValue=\"$AWS_KEY_NAME\""
+        "ParameterKey=YourIp,ParameterValue=\"$YOUR_IP\""
+        "ParameterKey=CreateNewKeyPair,ParameterValue=\"false\""
+        "ParameterKey=UseExistingSecurityGroup,ParameterValue=\"$USE_EXISTING_SG\""
+        "ParameterKey=ExistingSecurityGroupId,ParameterValue=\"$EXISTING_SECURITY_GROUP_ID\""
+        "ParameterKey=PublicRpcAccess,ParameterValue=\"$PUBLIC_RPC_ACCESS\""
+        "ParameterKey=InstanceType,ParameterValue=\"$AWS_INSTANCE_TYPE\""
+        "ParameterKey=RootVolumeSize,ParameterValue=\"$ROOT_VOLUME_SIZE\""
+        "ParameterKey=DataVolumeSize,ParameterValue=\"$DATA_VOLUME_SIZE\""
+        "ParameterKey=BitcoinVersion,ParameterValue=\"$BITCOIN_VERSION\""
+        "ParameterKey=CounterpartyBranch,ParameterValue=\"$COUNTERPARTY_BRANCH\""
+        "ParameterKey=CounterpartyTag,ParameterValue=\"$COUNTERPARTY_TAG\""
+        "ParameterKey=UbuntuVersion,ParameterValue=\"$UBUNTU_VERSION\""
+        "ParameterKey=GitHubToken,ParameterValue=\"$GITHUB_TOKEN\""
+        "ParameterKey=NetworkProfile,ParameterValue=\"$NETWORK_PROFILE\""
+    )
+    
+    # Counterparty-only parameters for update-counterparty-only mode
+    COUNTERPARTY_PARAMETERS=(
+        "ParameterKey=CounterpartyBranch,ParameterValue=\"$COUNTERPARTY_BRANCH\""
+        "ParameterKey=CounterpartyTag,ParameterValue=\"$COUNTERPARTY_TAG\""
+        "ParameterKey=GitHubToken,ParameterValue=\"$GITHUB_TOKEN\""
+    )
+    
+    if [ "$UPDATE_STACK" = true ]; then
+        # Check if stack exists
+        if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" &>/dev/null; then
+            log_error "Stack '$STACK_NAME' does not exist. Cannot update."
+            exit 1
+        fi
+        
+        # Handle different update modes
+        if [ "$UPDATE_COUNTERPARTY_ONLY" = true ]; then
+            log_info "Updating only Counterparty parameters in stack: $STACK_NAME..."
+            PARAMETERS_TO_USE=("${COUNTERPARTY_PARAMETERS[@]}")
+            
+            # All other parameters will use previous values
+            for param in $(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" --query "Stacks[0].Parameters[?!(ParameterKey=='CounterpartyBranch' || ParameterKey=='CounterpartyTag' || ParameterKey=='GitHubToken')].ParameterKey" --output text); do
+                PARAMETERS_TO_USE+=("ParameterKey=$param,UsePreviousValue=true")
+            done
+        else
+            log_info "Updating all parameters in stack: $STACK_NAME..."
+            PARAMETERS_TO_USE=("${ALL_PARAMETERS[@]}")
+        fi
+        
+        # Show parameters that will be updated
+        log_info "Parameters that will be updated:"
+        for param in "${PARAMETERS_TO_USE[@]}"; do
+            if [[ "$param" != *"GitHubToken"* ]]; then  # Don't display token
+                echo "  $param"
+            fi
+        done
+        
+        # Confirm update
+        if [ "$AUTO_CONFIRM" != "true" ]; then
+            read -p "Continue with stack update? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                log_info "Stack update cancelled."
+                exit 0
+            fi
+        fi
+        
+        # Update stack
+        aws cloudformation update-stack \
+          --region "$AWS_REGION" \
+          --stack-name "$STACK_NAME" \
+          --template-body "file://$TEMPLATE_PATH" \
+          --capabilities CAPABILITY_IAM \
+          --parameters "${PARAMETERS_TO_USE[@]}"
+        
+        OPERATION_TYPE="update"
+        WAIT_COMMAND="stack-update-complete"
+    else
+        # Create new stack
+        log_info "Creating CloudFormation stack: $STACK_NAME..."
+        aws cloudformation create-stack \
+          --region "$AWS_REGION" \
+          --stack-name "$STACK_NAME" \
+          --template-body "file://$TEMPLATE_PATH" \
+          --capabilities CAPABILITY_IAM \
+          --parameters "${ALL_PARAMETERS[@]}"
+        
+        OPERATION_TYPE="creation"
+        WAIT_COMMAND="stack-create-complete"
+    fi
 fi
 
-# Check if creation was successful
+# Check if operation was successful
 if [ $? -eq 0 ]; then
-    log_success "Stack creation initiated successfully."
+    log_success "Stack $OPERATION_TYPE initiated successfully."
     log_info "You can check the stack status with:"
     log_info "  aws cloudformation describe-stacks --stack-name $STACK_NAME --region $AWS_REGION"
     log_info "Or view it in the AWS CloudFormation Console."
 else
-    log_error "Failed to create stack. Check the error message above."
+    log_error "Failed to $OPERATION_TYPE stack. Check the error message above."
     exit 1
 fi
 
-# Wait for stack creation to complete (optional)
-log_info "Waiting for stack creation to complete... This may take 10-15 minutes."
-if aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$AWS_REGION"; then
+# Wait for stack operation to complete (optional)
+log_info "Waiting for stack $OPERATION_TYPE to complete... This may take 10-15 minutes."
+if aws cloudformation wait $WAIT_COMMAND --stack-name "$STACK_NAME" --region "$AWS_REGION"; then
     # Get outputs from the stack
     outputs=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" --query "Stacks[0].Outputs" --output json)
     
@@ -323,25 +401,34 @@ if aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --re
     log_info "SSH Command: $ssh_command"
     log_info ""
     
-    if [ "$WAIT_TIME" -gt 0 ]; then
-        if [ "$WAIT_TIME" -ge 60 ]; then
-            # Calculate minutes and seconds for display
-            minutes=$((WAIT_TIME / 60))
-            seconds=$((WAIT_TIME % 60))
-            if [ "$seconds" -eq 0 ]; then
-                log_info "Waiting $minutes minute(s) for the instance to complete its setup..."
+    # For stack creation or complete stack update, wait and check status
+    if [ "$OPERATION_TYPE" = "creation" ] || [ "$UPDATE_COUNTERPARTY_ONLY" = false ]; then
+        if [ "$WAIT_TIME" -gt 0 ]; then
+            if [ "$WAIT_TIME" -ge 60 ]; then
+                # Calculate minutes and seconds for display
+                minutes=$((WAIT_TIME / 60))
+                seconds=$((WAIT_TIME % 60))
+                if [ "$seconds" -eq 0 ]; then
+                    log_info "Waiting $minutes minute(s) for the instance to complete its setup..."
+                else
+                    log_info "Waiting $minutes minute(s) and $seconds second(s) for the instance to complete its setup..."
+                fi
             else
-                log_info "Waiting $minutes minute(s) and $seconds second(s) for the instance to complete its setup..."
+                log_info "Waiting $WAIT_TIME second(s) for the instance to complete its setup..."
             fi
+            
+            sleep $WAIT_TIME
+            log_info "Checking deployment status..."
         else
-            log_info "Waiting $WAIT_TIME second(s) for the instance to complete its setup..."
+            log_info "Skipping wait period. Your instance will continue setting up in the background."
+            log_info "You can check the status later with: ssh ubuntu@$public_ip './check-sync-status.sh'"
+            exit 0
         fi
-        
-        sleep $WAIT_TIME
-        log_info "Checking deployment status..."
-    else
-        log_info "Skipping wait period. Your instance will continue setting up in the background."
-        log_info "You can check the status later with: ssh ubuntu@$public_ip './check-sync-status.sh'"
+    elif [ "$UPDATE_COUNTERPARTY_ONLY" = true ]; then
+        # For Counterparty-only update, ssh in and check the containers
+        log_info "Counterparty update completed. Checking container status..."
+        ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$public_ip "docker ps | grep counterparty"
+        log_info "You may need to wait a moment for the Counterparty container to restart with the new version."
         exit 0
     fi
     if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$public_ip "docker ps" 2>/dev/null; then

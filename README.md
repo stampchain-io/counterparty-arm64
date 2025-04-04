@@ -123,17 +123,23 @@ The AWS deployment uses pre-built Docker Hub images to significantly speed up th
 
 2. Run the deployment script:
    ```bash
-   # The script will auto-detect your IP address
+   # Create a new stack (auto-detects your IP address)
    ./aws/scripts/deploy.sh
    
    # Or specify a custom stack name
    ./aws/scripts/deploy.sh --stack-name my-counterparty-node
+   
+   # For updating an existing stack with new parameters
+   ./aws/scripts/deploy.sh --stack-name my-counterparty-node --update-stack
+   
+   # For updating only the Counterparty version on an existing stack
+   ./aws/scripts/deploy.sh --stack-name my-counterparty-node --update-counterparty-only
    ```
 
 3. The script will:
    - Detect your public IP address automatically
    - Use your environment configuration
-   - Create a CloudFormation stack
+   - Create or update a CloudFormation stack
    - Wait for deployment to complete
    - Display connection information
    
@@ -142,6 +148,12 @@ The AWS deployment uses pre-built Docker Hub images to significantly speed up th
    - Pulls optimized Counterparty Core image from `xcparty/counterparty-core-arm64:[branch]`
    - Starts both Bitcoin and Counterparty services immediately after instance setup
    - Counterparty will automatically connect to Bitcoin when it becomes available
+   
+5. For upgrading Counterparty:
+   - Update your .env file with the new Counterparty branch or tag
+   - Run the update script with `--update-counterparty-only` flag
+   - The script will update only the Counterparty-related parameters
+   - Your Bitcoin data and configuration will remain intact
 
 #### Manual Deployment Options
 
