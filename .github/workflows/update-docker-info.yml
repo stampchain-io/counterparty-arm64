@@ -1,0 +1,120 @@
+name: Update Docker Image Information
+
+on:
+  schedule:
+    # Run once a day at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allow manual triggering
+  workflow_run:
+    workflows: ["Build and Push ARM64 Docker Images"]
+    types:
+      - completed
+
+jobs:
+  update-info:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Update Docker Hub Image Information
+        run: |
+          # Create table header
+          TABLE_START="### Available Images\n\n| Image | Tags | Status | Size |\n|-------|------|--------|------|"
+          
+          # Get information about Bitcoin Core image tags
+          echo "Checking Docker Hub for Bitcoin Core ARM64 images..."
+          BITCOIN_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/xcparty/bitcoind-arm64/tags?page_size=25" | jq -r '.results[].name' | sort -V)
+          
+          # Get information about Counterparty Core image tags
+          echo "Checking Docker Hub for Counterparty Core ARM64 images..."
+          COUNTERPARTY_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/xcparty/counterparty-core-arm64/tags?page_size=25" | jq -r '.results[].name' | sort -V)
+          
+          # Generate table rows for Bitcoin Core tags
+          BITCOIN_ROWS=""
+          for tag in $BITCOIN_TAGS; do
+              # Get image size (compressed)
+              SIZE=$(curl -s "https://hub.docker.com/v2/repositories/xcparty/bitcoind-arm64/tags/$tag" | jq -r '.full_size' 2>/dev/null)
+              
+              # Convert size to MB and format
+              if [ ! -z "$SIZE" ] && [ "$SIZE" != "null" ]; then
+                  # Convert bytes to MB
+                  SIZE_MB=$(echo "scale=1; $SIZE / 1024 / 1024" | bc)
+                  BITCOIN_ROWS="${BITCOIN_ROWS}| \`xcparty/bitcoind-arm64\` | \`$tag\` | ✅ Available | ~${SIZE_MB} MB |\n"
+              else
+                  BITCOIN_ROWS="${BITCOIN_ROWS}| \`xcparty/bitcoind-arm64\` | \`$tag\` | ✅ Available | Unknown |\n"
+              fi
+          done
+          
+          # Generate table rows for Counterparty Core tags
+          COUNTERPARTY_ROWS=""
+          for tag in $COUNTERPARTY_TAGS; do
+              # Get image size (compressed)
+              SIZE=$(curl -s "https://hub.docker.com/v2/repositories/xcparty/counterparty-core-arm64/tags/$tag" | jq -r '.full_size' 2>/dev/null)
+              
+              # Convert size to MB and format
+              if [ ! -z "$SIZE" ] && [ "$SIZE" != "null" ]; then
+                  # Convert bytes to MB
+                  SIZE_MB=$(echo "scale=1; $SIZE / 1024 / 1024" | bc)
+                  COUNTERPARTY_ROWS="${COUNTERPARTY_ROWS}| \`xcparty/counterparty-core-arm64\` | \`$tag\` | ✅ Available | ~${SIZE_MB} MB |\n"
+              else
+                  COUNTERPARTY_ROWS="${COUNTERPARTY_ROWS}| \`xcparty/counterparty-core-arm64\` | \`$tag\` | ✅ Available | Unknown |\n"
+              fi
+          done
+          
+          # If no images found, provide placeholder information
+          if [ -z "$BITCOIN_ROWS" ]; then
+              BITCOIN_ROWS="| \`xcparty/bitcoind-arm64\` | No tags found | ❌ Not available | - |\n"
+          fi
+          
+          if [ -z "$COUNTERPARTY_ROWS" ]; then
+              COUNTERPARTY_ROWS="| \`xcparty/counterparty-core-arm64\` | No tags found | ❌ Not available | - |\n"
+          fi
+          
+          # Combine all rows
+          TABLE="${TABLE_START}\n${BITCOIN_ROWS}${COUNTERPARTY_ROWS}"
+          
+          # Add note about build time and update time
+          CURRENT_TIME=$(date -u "+%Y-%m-%d %H:%M UTC")
+          NOTE="> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: ${CURRENT_TIME}"
+          
+          # Find the section to replace in README
+          README="README.md"
+          
+          # Create a temporary file with the updated content
+          awk -v table="$TABLE" -v note="$NOTE" '
+          BEGIN { found=0; skip=0; }
+          /^### Available Images/ { 
+              found=1; 
+              print table; 
+              print ""; 
+              print note; 
+              skip=1; 
+          }
+          /^## Directory Structure/ { skip=0; }
+          (!found || !skip) { print $0; }
+          ' $README > README.new
+          
+          # Check if the table was found and replaced
+          if grep -q "### Available Images" README.new; then
+              mv README.new $README
+              echo "Updated Docker Hub image information in README.md"
+          else
+              echo "Error: Could not find section to update in README.md"
+              exit 1
+          fi
+          
+          # Check if there are changes to commit
+          if git diff --quiet $README; then
+              echo "No changes to README.md, skipping commit"
+              exit 0
+          fi
+
+      - name: Commit and push if README changed
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add README.md
+          git diff --staged --quiet || git commit -m "Update Docker Hub image information [skip ci]"
+          git push
