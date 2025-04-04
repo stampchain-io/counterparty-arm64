@@ -1,12 +1,11 @@
 #!/bin/bash
-# Entrypoint script for the Bitcoin container that preserves command-line arguments
-# while also creating a bitcoin.conf file for bitcoin-cli to use
+# Entrypoint script for the Bitcoin container
 
 # Create the bitcoin config directory if it doesn't exist
 mkdir -p /bitcoin/.bitcoin
 mkdir -p /root/.bitcoin
 
-# Set default values for environment variables
+# Extract environment variables with defaults
 RPC_USER=${RPC_USER:-rpc}
 RPC_PASSWORD=${RPC_PASSWORD:-rpc}
 RPC_ALLOW_IP=${RPC_ALLOW_IP:-0.0.0.0/0}
@@ -23,16 +22,18 @@ ZMQ_PUB_HASH_TX=${ZMQ_PUB_HASH_TX:-tcp://0.0.0.0:9332}
 ZMQ_PUB_SEQUENCE=${ZMQ_PUB_SEQUENCE:-tcp://0.0.0.0:9332}
 ZMQ_PUB_RAW_BLOCK=${ZMQ_PUB_RAW_BLOCK:-tcp://0.0.0.0:9333}
 
-# Create bitcoin.conf with proper variable substitution
-cat > /bitcoin/.bitcoin/bitcoin.conf << EOL
+# Write config file
+cat > /bitcoin/.bitcoin/bitcoin.conf << EOF
 # Bitcoin Core configuration file
-# Created automatically by bitcoin-entrypoint.sh
+# Created by bitcoin-entrypoint.sh
 
-# Default RPC settings
+# RPC Settings
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
 rpcallowip=$RPC_ALLOW_IP
 rpcbind=$RPC_BIND
+
+# Node Settings
 server=$SERVER
 listen=$LISTEN
 addresstype=$ADDRESS_TYPE
@@ -41,12 +42,12 @@ prune=$PRUNE
 dbcache=$DB_CACHE
 mempoolfullrbf=$MEMPOOL_FULL_RBF
 
-# ZMQ settings required by Counterparty
+# ZMQ Settings
 zmqpubrawtx=$ZMQ_PUB_RAW_TX
 zmqpubhashtx=$ZMQ_PUB_HASH_TX
 zmqpubsequence=$ZMQ_PUB_SEQUENCE
 zmqpubrawblock=$ZMQ_PUB_RAW_BLOCK
-EOL
+EOF
 
 # Create symlink to the config for bitcoin-cli in the root directory
 ln -sf /bitcoin/.bitcoin/bitcoin.conf /root/.bitcoin/bitcoin.conf
