@@ -310,9 +310,18 @@ if aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --re
     log_info "Instance Public IP: $public_ip"
     log_info "SSH Command: $ssh_command"
     log_info ""
-    log_info "It may take a few more minutes for the instance to complete its setup."
-    log_info "You can check the setup progress with:"
-    log_info "  ssh ubuntu@$public_ip 'tail -f /var/log/cloud-init-output.log'"
+    log_info "Waiting 5 minutes for the instance to complete its setup..."
+    sleep 300  # Wait 5 minutes (300 seconds)
+    
+    log_info "Checking deployment status..."
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$public_ip "docker ps" 2>/dev/null; then
+        log_success "Services are running! You can now access your Counterparty node."
+        ssh -o StrictHostKeyChecking=no ubuntu@$public_ip "./check-sync-status.sh"
+    else
+        log_warning "Services may still be initializing. You can check the setup progress with:"
+        log_info "  ssh ubuntu@$public_ip 'tail -f /var/log/cloud-init-output.log'"
+        log_info "  ssh ubuntu@$public_ip 'docker ps'"
+    fi
 else
     log_error "Stack creation failed or timed out. Check the AWS CloudFormation Console for details."
     exit 1
