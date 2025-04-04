@@ -275,6 +275,24 @@ This project uses pre-built Docker images for faster deployment on ARM64 systems
   - Built with ARM64 native support
   - Includes all Python dependencies
 
+### Building Custom Images
+
+You can build custom ARM64 Docker images using our GitHub Actions workflow:
+
+1. Go to the repository's Actions tab
+2. Select the "Build ARM64 Docker Images" workflow
+3. Click "Run workflow"
+4. Choose your build parameters:
+   - **Bitcoin version**: The Bitcoin Core version to build
+   - **Counterparty branch**: The Counterparty Core branch or tag to build
+   - **Network profile**: The network to optimize for
+   - **Build mode**:
+     - `standard`: Basic build with QEMU emulation (all GitHub plans)
+     - `parallel`: Parallel matrix builds (Team/Business plans)
+     - `optimized`: Advanced caching and optimizations (Team/Business plans)
+
+The workflow automatically uploads template files as artifacts and updates the Docker Hub image status below.
+
 ### Available Images
 
 _This section is automatically updated by GitHub Actions showing current Docker Hub image status._
