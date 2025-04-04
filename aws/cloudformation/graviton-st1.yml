@@ -671,6 +671,34 @@ Resources:
             su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version '${BitcoinVersion}' --counterparty-branch '${CounterpartyBranch}' --data-dir '/bitcoin-data' --platform 'aws'"
           }
           
+          # Prepare default bitcoin.conf to ensure ZMQ settings are correct
+          mkdir -p /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin
+          cat > /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf << 'EOL'
+# Bitcoin Core configuration file
+# Created by CloudFormation template
+
+# RPC Settings
+rpcuser=rpc
+rpcpassword=rpc
+rpcallowip=0.0.0.0/0
+rpcbind=0.0.0.0
+server=1
+listen=1
+addresstype=legacy
+txindex=1
+prune=0
+dbcache=4000
+mempoolfullrbf=1
+
+# ZMQ Settings
+zmqpubrawtx=tcp://0.0.0.0:9332
+zmqpubhashtx=tcp://0.0.0.0:9332
+zmqpubsequence=tcp://0.0.0.0:9332
+zmqpubrawblock=tcp://0.0.0.0:9333
+EOL
+          chmod 600 /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf
+          chown -R ubuntu:ubuntu /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin
+          
           # Verify that the check-sync-status.sh script was copied correctly
           if [ ! -f /home/ubuntu/check-sync-status.sh ]; then
             echo "check-sync-status.sh was not copied by setup script, copying manually..."
@@ -747,7 +775,7 @@ Resources:
           echo "Deployment completed. Bitcoin and Counterparty services are now starting."
           echo "Check status with: ~/check-sync-status.sh"
           echo "Deploy time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
-          echo "Build version: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+          echo "Build version: fixed-entrypoint-$(date -u +%s)"
 
 Outputs:
   InstanceId:

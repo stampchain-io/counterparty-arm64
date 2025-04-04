@@ -17,9 +17,26 @@ RUN wget https://bitcoincore.org/bin/bitcoin-core-${BITCOIN_VERSION}/bitcoin-${B
 # Create data directory with proper permissions
 RUN mkdir -p /bitcoin/.bitcoin && chmod 777 /bitcoin/.bitcoin
 
-# Copy and prepare the entrypoint script
-COPY bitcoin-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/bitcoin-entrypoint.sh
+# Create a default bitcoin.conf
+RUN echo "# Default Bitcoin Configuration\n\
+rpcuser=rpc\n\
+rpcpassword=rpc\n\
+rpcallowip=0.0.0.0/0\n\
+rpcbind=0.0.0.0\n\
+server=1\n\
+listen=1\n\
+addresstype=legacy\n\
+txindex=1\n\
+prune=0\n\
+dbcache=4000\n\
+mempoolfullrbf=1\n\
+\n\
+# ZMQ Settings\n\
+zmqpubrawtx=tcp://0.0.0.0:9332\n\
+zmqpubhashtx=tcp://0.0.0.0:9332\n\
+zmqpubsequence=tcp://0.0.0.0:9332\n\
+zmqpubrawblock=tcp://0.0.0.0:9333" > /bitcoin/.bitcoin/bitcoin.conf && \
+    chmod 600 /bitcoin/.bitcoin/bitcoin.conf
 
 VOLUME ["/bitcoin/.bitcoin"]
 
@@ -29,5 +46,6 @@ EXPOSE 8332 8333 9332 9333 18332 18333 19332 19333 29332 29333 48332 49332 49333
 # Version label
 LABEL org.counterparty.arm64.bitcoin.version="${BITCOIN_VERSION}"
 
-# Use our custom entrypoint to create bitcoin.conf while keeping command line args
-ENTRYPOINT ["/usr/local/bin/bitcoin-entrypoint.sh"]
+# Use bitcoind directly as the entrypoint
+ENTRYPOINT ["bitcoind"]
+CMD ["-printtoconsole=1"]

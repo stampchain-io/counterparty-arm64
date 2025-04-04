@@ -4,6 +4,7 @@ x-bitcoind-common: &bitcoind-common
   volumes:
     - data:/bitcoin/.bitcoin
   restart: unless-stopped
+  entrypoint: ["bitcoind"]
 
 x-counterparty-common: &counterparty-common
   image: counterparty/counterparty:local
@@ -30,25 +31,24 @@ services:
       - "8332:8332"
       - "9332:9332"
       - "9333:9333"
-    environment:
-      - RPC_USER=rpc
-      - RPC_PASSWORD=rpc
-      - RPC_ALLOW_IP=0.0.0.0/0
-      - RPC_BIND=0.0.0.0
-      - SERVER=1
-      - LISTEN=1
-      - ADDRESS_TYPE=legacy
-      - TX_INDEX=1
-      - PRUNE=0
-      - DB_CACHE=4000
-      - MEMPOOL_FULL_RBF=1
-      - ZMQ_PUB_RAW_TX=tcp://0.0.0.0:9332
-      - ZMQ_PUB_HASH_TX=tcp://0.0.0.0:9332
-      - ZMQ_PUB_SEQUENCE=tcp://0.0.0.0:9332
-      - ZMQ_PUB_RAW_BLOCK=tcp://0.0.0.0:9333
     command:
       - "-chain=main"
       - "-printtoconsole=1"
+      - "-rpcuser=rpc"
+      - "-rpcpassword=rpc"
+      - "-rpcallowip=0.0.0.0/0"
+      - "-rpcbind=0.0.0.0"
+      - "-server=1"
+      - "-listen=1"
+      - "-addresstype=legacy"
+      - "-txindex=1"
+      - "-prune=0"
+      - "-dbcache=4000"
+      - "-mempoolfullrbf=1"
+      - "-zmqpubrawtx=tcp://0.0.0.0:9332"
+      - "-zmqpubhashtx=tcp://0.0.0.0:9332"
+      - "-zmqpubsequence=tcp://0.0.0.0:9332"
+      - "-zmqpubrawblock=tcp://0.0.0.0:9333"
 
   counterparty-core:
     <<: *counterparty-common
