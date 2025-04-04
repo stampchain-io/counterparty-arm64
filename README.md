@@ -1,6 +1,6 @@
 # Counterparty ARM64
 
-[![Build and Push ARM64 Docker Images](https://github.com/stampchain-io/counterparty-arm64/actions/workflows/docker-build.yml/badge.svg)](https://github.com/stampchain-io/counterparty-arm64/actions/workflows/docker-build.yml)
+[![Build ARM64 Docker Images](https://github.com/stampchain-io/counterparty-arm64/actions/workflows/docker-build-consolidated.yml/badge.svg)](https://github.com/stampchain-io/counterparty-arm64/actions/workflows/docker-build-consolidated.yml)
 
 This repository provides a complete solution for running Counterparty and Bitcoin Core on ARM64 architecture, specifically optimized for AWS Graviton instances with ST1 storage volumes.
 

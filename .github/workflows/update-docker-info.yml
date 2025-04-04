@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     # Allow manual triggering
   workflow_run:
-    workflows: ["Build and Push ARM64 Docker Images"]
+    workflows: ["Build ARM64 Docker Images"]
     types:
       - completed
 
