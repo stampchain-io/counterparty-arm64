@@ -642,9 +642,8 @@ Resources:
           
           chown -R ubuntu:ubuntu counterparty-arm64
           
-          # Copy common.sh to home directory for use by check-sync-status.sh
-          cp /home/ubuntu/counterparty-arm64/scripts/common.sh /home/ubuntu/
-          chmod +x /home/ubuntu/common.sh
+          # We no longer need to copy common.sh as we'll use a more robust approach
+          # that finds common.sh in the repository structure
           
           # Copy all Docker files to counterparty-node directory
           mkdir -p /home/ubuntu/counterparty-node
@@ -706,10 +705,30 @@ Resources:
             chmod +x /home/ubuntu/check-sync-status.sh
           fi
           
-          # Fix the check-sync-status.sh script to use the local common.sh
-          sed -i 's|^SCRIPT_DIR=.*|source "/home/ubuntu/common.sh"|' /home/ubuntu/check-sync-status.sh
-          sed -i '/^REPO_DIR=.*/d' /home/ubuntu/check-sync-status.sh
-          sed -i '/^source "\$REPO_DIR\/scripts\/common.sh"/d' /home/ubuntu/check-sync-status.sh || true
+          # Make check-sync-status.sh more robust in finding common.sh
+          cat > /home/ubuntu/check-sync-status.sh << 'EOF'
+#!/bin/bash
+# Script to check Bitcoin sync status in a Counterparty Docker deployment
+
+# Get script directory and locate common.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="/home/ubuntu/counterparty-arm64"
+COMMON_SH="$REPO_DIR/scripts/common.sh"
+
+# Source common functions
+if [ -f "$COMMON_SH" ]; then
+    source "$COMMON_SH"
+else
+    echo "Error: Could not find common.sh"
+    exit 1
+fi
+
+# Rest of the check-sync-status.sh script
+EOF
+
+          # Append the rest of the original script (skip first 5 lines which include the common.sh sourcing)
+          tail -n +6 /home/ubuntu/counterparty-arm64/scripts/check-sync-status.sh >> /home/ubuntu/check-sync-status.sh
+          chmod +x /home/ubuntu/check-sync-status.sh
           
           # Update docker-compose.yml to use pre-built Docker Hub images
           echo "Updating docker-compose.yml to use Docker Hub images..."

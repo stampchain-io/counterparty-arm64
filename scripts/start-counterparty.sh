@@ -46,9 +46,8 @@ if [ -z "$COUNTERPARTY_DOCKER_DATA" ]; then
     log_info "COUNTERPARTY_DOCKER_DATA wasn't set. Using default: $COUNTERPARTY_DOCKER_DATA"
 fi
 
-# Make sure the data directory exists
-mkdir -p "${COUNTERPARTY_DOCKER_DATA}/bitcoin"
-mkdir -p "${COUNTERPARTY_DOCKER_DATA}/counterparty"
+# Make sure the data directory structure exists
+ensure_data_structure
 
 log_info "Starting Counterparty services with profile: $PROFILE"
 log_info "Building from source: $BUILD_FROM_SOURCE"
