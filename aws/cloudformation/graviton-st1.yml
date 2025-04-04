@@ -733,16 +733,18 @@ Resources:
           cp /home/ubuntu/.counterparty-arm64/config.env /home/ubuntu/counterparty-node/.env
           chown ubuntu:ubuntu /home/ubuntu/counterparty-node/.env
           
-          # Pull and tag Docker images for local use
-          docker pull xcparty/bitcoind-arm64:${BitcoinVersion}
-          docker tag xcparty/bitcoind-arm64:${BitcoinVersion} bitcoind:arm64-local
+          # Build Bitcoin image locally with entrypoint script
+          cd /home/ubuntu/counterparty-arm64/docker
+          cp bitcoin-entrypoint.sh /usr/local/bin/
+          chmod +x /usr/local/bin/bitcoin-entrypoint.sh
+          docker build -t bitcoind:arm64-local -f Dockerfile.bitcoind .
           
+          # Pull Counterparty image
           docker pull xcparty/counterparty-core-arm64:${CounterpartyBranch}
           docker tag xcparty/counterparty-core-arm64:${CounterpartyBranch} counterparty/counterparty:local
           
-          # Update docker-compose.yml to use Docker Hub images
-          su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: xcparty\/bitcoind-arm64:${BitcoinVersion}/g' ~/counterparty-node/docker-compose.yml"
-          su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: xcparty\/counterparty-core-arm64:${CounterpartyBranch}|g' ~/counterparty-node/docker-compose.yml"
+          # We'll use the local images as specified in docker-compose.yml
+          # No need to modify the image names in docker-compose.yml
           
           # Start Bitcoin and Counterparty services
           echo "Starting services with profile ${NetworkProfile}..."
