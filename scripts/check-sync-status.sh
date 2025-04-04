@@ -1,8 +1,23 @@
 #!/bin/bash
 # Script to check Bitcoin sync status in a Counterparty Docker deployment
 
+# Locate repository and common.sh
+REPO_DIR="/home/ubuntu/counterparty-arm64"
+COMMON_SH="$REPO_DIR/scripts/common.sh"
+
 # Source common functions
-source "$(dirname "$0")/common.sh"
+if [ -f "$COMMON_SH" ]; then
+    source "$COMMON_SH"
+else
+    # For development environments, try relative path
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -f "$SCRIPT_DIR/common.sh" ]; then
+        source "$SCRIPT_DIR/common.sh"
+    else
+        echo "Error: Could not find common.sh"
+        exit 1
+    fi
+fi
 
 # Get Bitcoin container name
 BITCOIN_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "bitcoind.*1$" | head -1)

@@ -1,18 +1,15 @@
 #!/bin/bash
 # check-and-start-counterparty.sh - Script to check Bitcoin sync status and start Counterparty when ready
 
-# Get script directory and locate common.sh
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$SCRIPT_DIR"
+# Locate repository and common.sh
+REPO_DIR="/home/ubuntu/counterparty-arm64"
 COMMON_SH="$REPO_DIR/scripts/common.sh"
 
 # Source common functions
 if [ -f "$COMMON_SH" ]; then
     source "$COMMON_SH"
-elif [ -f "/home/ubuntu/common.sh" ]; then
-    source "/home/ubuntu/common.sh"
 else
-    echo "Error: Could not find common.sh"
+    echo "Error: Could not find common.sh at $COMMON_SH"
     exit 1
 fi
 
@@ -102,7 +99,7 @@ if docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.co
     fi
     
     log_info "Detected network profile: $NETWORK_PROFILE, container: $COUNTERPARTY_CONTAINER"
-    cd /home/ubuntu/counterparty-node && docker compose --profile $NETWORK_PROFILE up -d $COUNTERPARTY_CONTAINER
+    cd $REPO_DIR/docker && docker compose --profile $NETWORK_PROFILE up -d $COUNTERPARTY_CONTAINER
     
     # Verify Counterparty started
     sleep 5
