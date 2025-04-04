@@ -140,8 +140,8 @@ The AWS deployment uses pre-built Docker Hub images to significantly speed up th
 4. The deployment process:
    - Pulls optimized Bitcoin Core image from `xcparty/bitcoind-arm64:[version]`
    - Pulls optimized Counterparty Core image from `xcparty/counterparty-core-arm64:[branch]`
-   - Starts Bitcoin immediately after instance setup
-   - Automatically starts Counterparty when Bitcoin reaches 10% synchronization
+   - Starts both Bitcoin and Counterparty services immediately after instance setup
+   - Counterparty will automatically connect to Bitcoin when it becomes available
 
 #### Manual Deployment Options
 

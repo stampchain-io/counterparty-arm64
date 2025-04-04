@@ -714,52 +714,33 @@ Resources:
           echo "Pulling Docker images for ${NetworkProfile} profile..."
           
           # Start both Bitcoin and Counterparty with the selected network profile
-          echo "Starting Bitcoin service with ${NetworkProfile} profile..."
-          su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d bitcoind" || echo "Failed to start Bitcoin service, check logs for details"
+          echo "Starting Bitcoin and Counterparty services with ${NetworkProfile} profile..."
+          su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d" || {
+            echo "Failed to start both services together. Trying to start Bitcoin first..."
+            su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d bitcoind"
+            
+            # Wait a moment for Bitcoin to initialize
+            echo "Waiting 10 seconds for Bitcoin to initialize..."
+            sleep 10
+            
+            # Now start Counterparty
+            echo "Starting Counterparty service..."
+            su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d"
+          }
           
-          # Copy the check-and-start-counterparty.sh script to monitor Bitcoin sync and start Counterparty
-          cp /home/ubuntu/counterparty-arm64/check-and-start-counterparty.sh /home/ubuntu/
-          chmod +x /home/ubuntu/check-and-start-counterparty.sh
+          # Copy the check-sync-status.sh script to monitor Bitcoin sync status
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/check-sync-status.sh /home/ubuntu/
+          chmod +x /home/ubuntu/check-sync-status.sh
           
           # Install cron if not already installed
           apt-get update && apt-get install -y cron
           systemctl enable cron
           systemctl start cron
           
-          # Create a script to manage the Counterparty startup cron job
-          # The script will self-disable once Counterparty is running
-          printf '%s\n' \
-            '#!/bin/bash' \
-            '# Helper script to manage the Counterparty startup cron job' \
-            '' \
-            '# Run the check script' \
-            '/home/ubuntu/check-and-start-counterparty.sh >> /home/ubuntu/counterparty-startup.log 2>&1' \
-            '' \
-            '# If Counterparty is running, disable the startup cron job' \
-            'if docker ps | grep -q "counterparty-core"; then' \
-            '    # Keep a record that we are disabling the cron' \
-            '    echo "$(date): Counterparty detected as running. Disabling startup cron job." >> /home/ubuntu/counterparty-startup.log' \
-            '    ' \
-            '    # Update crontab to remove the startup job but keep the hourly status check' \
-            '    (crontab -l | grep -v "cron-helper.sh") | crontab -' \
-            '    ' \
-            '    # Add a final log entry' \
-            '    echo "$(date): Startup cron job disabled. Counterparty is now running." >> /home/ubuntu/counterparty-startup.log' \
-            'fi' \
-            > /home/ubuntu/cron-helper.sh
-
-          # Make the helper script executable
-          chmod +x /home/ubuntu/cron-helper.sh
-          chown ubuntu:ubuntu /home/ubuntu/cron-helper.sh
-          
-          # Add to crontab to check every 5 minutes if bitcoin is synced enough to start counterparty
-          # Using the helper script that will self-disable after success
-          (crontab -l 2>/dev/null; echo "*/5 * * * * /home/ubuntu/cron-helper.sh") | crontab -
-          
           # Add check-sync-status.sh to cron for hourly checks (this will remain)
           (crontab -l 2>/dev/null; echo "0 * * * * /home/ubuntu/check-sync-status.sh > /home/ubuntu/sync-status.log 2>&1") | crontab -
           
-          echo "Deployment completed. Bitcoin node is now starting. Counterparty service will be started once bootstrapping is complete."
+          echo "Deployment completed. Bitcoin and Counterparty services are now starting."
           echo "Check status with: ~/check-sync-status.sh"
 
 Outputs:
