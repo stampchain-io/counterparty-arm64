@@ -647,6 +647,11 @@ Resources:
           
           # Create symbolic link for counterparty-node pointing to the docker directory
           ln -sf /home/ubuntu/counterparty-arm64/docker /home/ubuntu/counterparty-node
+          
+          # Ensure entrypoint script is available and executable in system path
+          sudo cp /home/ubuntu/counterparty-arm64/docker/bitcoin-entrypoint.sh /usr/local/bin/
+          sudo chmod +x /usr/local/bin/bitcoin-entrypoint.sh
+          
           chown -R ubuntu:ubuntu /home/ubuntu/counterparty-node
           
           # Make sure all Bitcoin-data directories have correct permissions
@@ -670,6 +675,9 @@ Resources:
           mkdir -p /bitcoin-data/bitcoin/.bitcoin
           cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
           # Bitcoin Core configuration file - Created by CloudFormation template
+          
+          # Explicitly set the data directory
+          datadir=/bitcoin/.bitcoin
           
           # RPC Settings
           rpcuser=rpc
@@ -725,38 +733,51 @@ Resources:
           cp /home/ubuntu/.counterparty-arm64/config.env /home/ubuntu/counterparty-node/.env
           chown ubuntu:ubuntu /home/ubuntu/counterparty-node/.env
           
+          # Pull and tag Docker images for local use
+          docker pull xcparty/bitcoind-arm64:${BitcoinVersion}
+          docker tag xcparty/bitcoind-arm64:${BitcoinVersion} bitcoind:arm64-local
+          
+          docker pull xcparty/counterparty-core-arm64:${CounterpartyBranch}
+          docker tag xcparty/counterparty-core-arm64:${CounterpartyBranch} counterparty/counterparty:local
+          
           # Update docker-compose.yml to use Docker Hub images
           su - ubuntu -c "sed -i 's/image: bitcoind:arm64-local/image: xcparty\/bitcoind-arm64:${BitcoinVersion}/g' ~/counterparty-node/docker-compose.yml"
           su - ubuntu -c "sed -i 's|image: counterparty/counterparty:local|image: xcparty\/counterparty-core-arm64:${CounterpartyBranch}|g' ~/counterparty-node/docker-compose.yml"
           
-          echo "Pulling Docker images for ${NetworkProfile} profile..."
+          # Start Bitcoin and Counterparty services
+          echo "Starting services with profile ${NetworkProfile}..."
+          cd /home/ubuntu/counterparty-node && docker compose --profile ${NetworkProfile} up -d
           
-          # Start both Bitcoin and Counterparty with the selected network profile
-          echo "Starting Bitcoin and Counterparty services with ${NetworkProfile} profile..."
-          su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d" || {
-            echo "Failed to start both services together. Trying to start Bitcoin first..."
-            su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d bitcoind"
-            
-            # Wait a moment for Bitcoin to initialize
-            echo "Waiting 10 seconds for Bitcoin to initialize..."
-            sleep 10
-            
-            # Now start Counterparty
-            echo "Starting Counterparty service..."
-            su - ubuntu -c "cd ~/counterparty-node && docker compose --profile ${NetworkProfile} up -d"
-          }
+          # We don't need a cron job to start Counterparty - we'll start it directly
+          # Counterparty will start alongside Bitcoin as long as Bitcoin is running
+          
+          # Wait for Bitcoin to start and verify it's using the correct data directory
+          echo "Waiting for Bitcoin to initialize..."
+          sleep 15
+          
+          # Check if Bitcoin is running and using the correct data directory
+          BITCOIN_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "bitcoind" | head -1)
+          if [ -n "$BITCOIN_CONTAINER" ]; then
+            echo "Bitcoin container $BITCOIN_CONTAINER is running"
+            # Run check-sync-status.sh to verify initial sync is starting
+            su - ubuntu -c "/home/ubuntu/check-sync-status.sh"
+          else
+            echo "WARNING: Bitcoin container not running, check logs for errors"
+          fi
+          
+          echo "Deployment completed. Bitcoin and Counterparty services are now starting."
+          echo "Check status with: ~/check-sync-status.sh"
+          echo "Deploy time: $(date -u) UTC" 
+          echo "Build version: fixed-entrypoint-$(date +%s)"
+            # No need to wait and start Counterparty separately as we start with the profile
+          # This automatically starts both Bitcoin and Counterparty services
           
           # Copy the check-sync-status.sh script to monitor Bitcoin sync status
           cp /home/ubuntu/counterparty-arm64/aws/scripts/check-sync-status.sh /home/ubuntu/
           chmod +x /home/ubuntu/check-sync-status.sh
           
-          # Install cron if not already installed
-          apt-get update && apt-get install -y cron
-          systemctl enable cron
-          systemctl start cron
-          
-          # Add check-sync-status.sh to cron for hourly checks (this will remain)
-          (crontab -l 2>/dev/null; echo "0 * * * * /home/ubuntu/check-sync-status.sh > /home/ubuntu/sync-status.log 2>&1") | crontab -
+          # Check-sync-status.sh is still useful for monitoring, but we don't need to add it to cron
+          # Users can add it to cron manually if they want hourly status checks
           
           echo "Deployment completed. Bitcoin and Counterparty services are now starting."
           echo "Check status with: ~/check-sync-status.sh"
