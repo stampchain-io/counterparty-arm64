@@ -1,6 +1,7 @@
 name: Build ARM64 Docker Images (Free Tier)
 
 on:
+  # Allow manual triggering through UI
   workflow_dispatch:
     inputs:
       bitcoin_version:
