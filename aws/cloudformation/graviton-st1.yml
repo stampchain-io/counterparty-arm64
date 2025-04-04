@@ -556,7 +556,8 @@ Resources:
           
           # Set permissions and create necessary directories
           mkdir -p /bitcoin-data/docker
-          mkdir -p /bitcoin-data/counterparty-docker-data
+          mkdir -p /bitcoin-data/bitcoin
+          mkdir -p /bitcoin-data/counterparty
           mkdir -p /bitcoin-data/repo
           chown -R ubuntu:ubuntu /bitcoin-data
           chmod -R 755 /bitcoin-data
@@ -672,8 +673,8 @@ Resources:
           }
           
           # Create bitcoin.conf file with proper ZMQ settings
-          mkdir -p /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin
-          cat << 'EOF' > /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf
+          mkdir -p /bitcoin-data/bitcoin/.bitcoin
+          cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
           # Bitcoin Core configuration file - Created by CloudFormation template
           
           # RPC Settings
@@ -695,8 +696,8 @@ Resources:
           zmqpubsequence=tcp://0.0.0.0:9332
           zmqpubrawblock=tcp://0.0.0.0:9333
           EOF
-          chmod 600 /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin/bitcoin.conf
-          chown -R ubuntu:ubuntu /bitcoin-data/counterparty-docker-data/bitcoin/.bitcoin
+          chmod 600 /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
+          chown -R ubuntu:ubuntu /bitcoin-data/bitcoin/.bitcoin
           
           # Verify that the check-sync-status.sh script was copied correctly
           if [ ! -f /home/ubuntu/check-sync-status.sh ]; then

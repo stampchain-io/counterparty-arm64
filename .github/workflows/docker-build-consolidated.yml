@@ -163,15 +163,15 @@ jobs:
             image: xcparty/bitcoind-arm64:${BITCOIN_VERSION:-26.0}
             stop_grace_period: 1m
             volumes:
-              - data:/bitcoin/.bitcoin
+              - bitcoin_data:/bitcoin/.bitcoin
             restart: unless-stopped
 
           x-counterparty-common: &counterparty-common
             image: xcparty/counterparty-core-arm64:${COUNTERPARTY_BRANCH:-develop}
             stop_grace_period: 1m
             volumes:
-              - data:/root/.bitcoin
-              - data:/data
+              - bitcoin_data:/root/.bitcoin
+              - counterparty_data:/data
             environment:
               - XDG_DATA_HOME=/data/
               - XDG_LOG_HOME=/data/
@@ -186,7 +186,7 @@ jobs:
               driver_opts:
                 type: none
                 o: bind
-                device: ${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}/counterparty-docker-data
+                device: ${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}/bitcoin
           EOF
           
           mkdir -p artifacts
@@ -358,15 +358,15 @@ jobs:
             image: xcparty/bitcoind-arm64:${BITCOIN_VERSION:-26.0}
             stop_grace_period: 1m
             volumes:
-              - data:/bitcoin/.bitcoin
+              - bitcoin_data:/bitcoin/.bitcoin
             restart: unless-stopped
 
           x-counterparty-common: &counterparty-common
             image: xcparty/counterparty-core-arm64:${COUNTERPARTY_BRANCH:-develop}
             stop_grace_period: 1m
             volumes:
-              - data:/root/.bitcoin
-              - data:/data
+              - bitcoin_data:/root/.bitcoin
+              - counterparty_data:/data
             environment:
               - XDG_DATA_HOME=/data/
               - XDG_LOG_HOME=/data/
@@ -381,7 +381,7 @@ jobs:
               driver_opts:
                 type: none
                 o: bind
-                device: ${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}/counterparty-docker-data
+                device: ${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}/bitcoin
           EOF
           
           mkdir -p artifacts
@@ -565,15 +565,15 @@ jobs:
             image: xcparty/bitcoind-arm64:${BITCOIN_VERSION:-26.0}
             stop_grace_period: 1m
             volumes:
-              - data:/bitcoin/.bitcoin
+              - bitcoin_data:/bitcoin/.bitcoin
             restart: unless-stopped
 
           x-counterparty-common: &counterparty-common
             image: xcparty/counterparty-core-arm64:${COUNTERPARTY_BRANCH:-develop}
             stop_grace_period: 1m
             volumes:
-              - data:/root/.bitcoin
-              - data:/data
+              - bitcoin_data:/root/.bitcoin
+              - counterparty_data:/data
             environment:
               - XDG_DATA_HOME=/data/
               - XDG_LOG_HOME=/data/
@@ -588,7 +588,7 @@ jobs:
               driver_opts:
                 type: none
                 o: bind
-                device: ${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}/counterparty-docker-data
+                device: ${COUNTERPARTY_DOCKER_DATA:-/bitcoin-data}/bitcoin
           EOF
           
           mkdir -p artifacts

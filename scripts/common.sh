@@ -144,7 +144,8 @@ cleanup_containers() {
 # Ensure data directory structure
 ensure_data_structure() {
     ensure_dir "${COUNTERPARTY_DOCKER_DATA}"
-    ensure_dir "${COUNTERPARTY_DOCKER_DATA}/counterparty-docker-data"
+    ensure_dir "${COUNTERPARTY_DOCKER_DATA}/bitcoin"
+    ensure_dir "${COUNTERPARTY_DOCKER_DATA}/counterparty"
     ensure_dir "${COUNTERPARTY_DOCKER_DATA}/repo"
     
     # Ensure permissions are correct

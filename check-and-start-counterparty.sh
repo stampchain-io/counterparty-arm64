@@ -42,10 +42,10 @@ timestamp() {
 
 log_info "[$( timestamp )] Checking Bitcoin synchronization status..."
 
-# Get block counts using bitcoin-cli
-if docker exec $BITCOIN_CONTAINER bitcoin-cli -rpcuser=$BITCOIN_RPC_USER -rpcpassword=$BITCOIN_RPC_PASSWORD getblockchaininfo > /dev/null 2>&1; then
+# Get block counts using bitcoin-cli with the correct config file
+if docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getblockchaininfo > /dev/null 2>&1; then
     # Get blockchain info using bitcoin-cli
-    BLOCKCHAIN_INFO=$(docker exec $BITCOIN_CONTAINER bitcoin-cli -rpcuser=$BITCOIN_RPC_USER -rpcpassword=$BITCOIN_RPC_PASSWORD getblockchaininfo)
+    BLOCKCHAIN_INFO=$(docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getblockchaininfo)
     BLOCKS=$(echo "$BLOCKCHAIN_INFO" | grep -oP '"blocks":\s*\K\d+')
     HEADERS=$(echo "$BLOCKCHAIN_INFO" | grep -oP '"headers":\s*\K\d+')
     VERIFICATION_PROGRESS=$(echo "$BLOCKCHAIN_INFO" | grep -oP '"verificationprogress":\s*\K[0-9\.]+')

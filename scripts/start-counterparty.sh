@@ -47,7 +47,8 @@ if [ -z "$COUNTERPARTY_DOCKER_DATA" ]; then
 fi
 
 # Make sure the data directory exists
-mkdir -p "${COUNTERPARTY_DOCKER_DATA}/counterparty-docker-data"
+mkdir -p "${COUNTERPARTY_DOCKER_DATA}/bitcoin"
+mkdir -p "${COUNTERPARTY_DOCKER_DATA}/counterparty"
 
 log_info "Starting Counterparty services with profile: $PROFILE"
 log_info "Building from source: $BUILD_FROM_SOURCE"

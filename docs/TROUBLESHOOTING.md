@@ -18,13 +18,15 @@ The setup automatically detects ARM64 architecture and builds appropriate images
 
 ### Docker Mount Issues
 
-**Problem:** Seeing errors like `failed to mount local volume: mount /bitcoin-data/counterparty-docker-data:/bitcoin-data/docker/volumes/counterparty-core_data/_data, flags: 0x1000: no such file or directory`
+**Problem:** Seeing errors like failed to mount local volume errors with docker volumes.
 
-**Solution:** Create the required directory and check permissions:
+**Solution:** Create the required directories and check permissions:
 
 ```bash
-mkdir -p /bitcoin-data/counterparty-docker-data
-sudo chown -R ubuntu:ubuntu /bitcoin-data/counterparty-docker-data
+mkdir -p /bitcoin-data/bitcoin
+mkdir -p /bitcoin-data/counterparty
+sudo chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
+sudo chown -R ubuntu:ubuntu /bitcoin-data/counterparty
 ```
 
 ### Missing Images
@@ -213,6 +215,6 @@ aws ec2 describe-snapshots --filters "Name=description,Values=*Bitcoin*" --query
 
 ## Still Having Issues?
 
-- Check the logs in `/bitcoin-data/counterparty-docker-data`
+- Check the logs in `/bitcoin-data/bitcoin` and `/bitcoin-data/counterparty`
 - Open an issue on the GitHub repository
 - Refer to the official Counterparty documentation for additional troubleshooting

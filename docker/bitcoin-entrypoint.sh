@@ -3,7 +3,6 @@
 
 # Create the bitcoin config directory if it doesn't exist
 mkdir -p /bitcoin/.bitcoin
-mkdir -p /root/.bitcoin
 
 # Extract environment variables with defaults
 RPC_USER=${RPC_USER:-rpc}
@@ -27,6 +26,9 @@ cat > /bitcoin/.bitcoin/bitcoin.conf << EOF
 # Bitcoin Core configuration file
 # Created by bitcoin-entrypoint.sh
 
+# Explicitly set the data directory
+datadir=/bitcoin/.bitcoin
+
 # RPC Settings
 rpcuser=$RPC_USER
 rpcpassword=$RPC_PASSWORD
@@ -49,15 +51,12 @@ zmqpubsequence=$ZMQ_PUB_SEQUENCE
 zmqpubrawblock=$ZMQ_PUB_RAW_BLOCK
 EOF
 
-# Create symlink to the config for bitcoin-cli in the root directory
-ln -sf /bitcoin/.bitcoin/bitcoin.conf /root/.bitcoin/bitcoin.conf
-
-# Set proper permissions
+# Set proper permissions for bitcoin.conf
 chmod 600 /bitcoin/.bitcoin/bitcoin.conf
-chmod 600 /root/.bitcoin/bitcoin.conf
 
 echo "Created bitcoin.conf with RPC and ZMQ settings"
 echo "Starting bitcoind with command-line arguments..."
 
-# Execute bitcoind with all passed arguments
-exec bitcoind "$@"
+# Execute bitcoind with explicit datadir to ensure consistent data location
+# This forces Bitcoin to use /bitcoin/.bitcoin instead of the default /root/.bitcoin
+exec bitcoind -datadir=/bitcoin/.bitcoin "$@"
