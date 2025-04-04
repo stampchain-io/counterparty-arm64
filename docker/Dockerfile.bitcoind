@@ -46,6 +46,10 @@ EXPOSE 8332 8333 9332 9333 18332 18333 19332 19333 29332 29333 48332 49332 49333
 # Version label
 LABEL org.counterparty.arm64.bitcoin.version="${BITCOIN_VERSION}"
 
-# Use bitcoind directly as the entrypoint
-ENTRYPOINT ["bitcoind"]
+# Copy entrypoint script
+COPY bitcoin-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/bitcoin-entrypoint.sh
+
+# Use entrypoint script
+ENTRYPOINT ["bitcoin-entrypoint.sh"]
 CMD ["-printtoconsole=1"]

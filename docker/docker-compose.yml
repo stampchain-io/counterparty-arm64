@@ -4,7 +4,7 @@ x-bitcoind-common: &bitcoind-common
   volumes:
     - bitcoin_data:/bitcoin/.bitcoin
   restart: unless-stopped
-  entrypoint: ["bitcoind"]
+  entrypoint: ["bitcoin-entrypoint.sh"]
 
 x-counterparty-common: &counterparty-common
   image: counterparty/counterparty:local

@@ -772,9 +772,11 @@ Resources:
             # No need to wait and start Counterparty separately as we start with the profile
           # This automatically starts both Bitcoin and Counterparty services
           
-          # Copy the check-sync-status.sh script to monitor Bitcoin sync status
+          # Copy scripts to the home directory for easier access
           cp /home/ubuntu/counterparty-arm64/aws/scripts/check-sync-status.sh /home/ubuntu/
+          cp /home/ubuntu/counterparty-arm64/scripts/common.sh /home/ubuntu/
           chmod +x /home/ubuntu/check-sync-status.sh
+          chown ubuntu:ubuntu /home/ubuntu/check-sync-status.sh /home/ubuntu/common.sh
           
           # Check-sync-status.sh is still useful for monitoring, but we don't need to add it to cron
           # Users can add it to cron manually if they want hourly status checks
