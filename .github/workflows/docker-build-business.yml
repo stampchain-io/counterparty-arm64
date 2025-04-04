@@ -21,16 +21,9 @@ on:
           - testnet3
           - testnet4
           - regtest
-      runner_size:
-        description: 'Runner size (default is 4-core, larger runners available on Business plans)'
-        required: true
-        default: 'medium'
-        type: choice
-        options:
-          - small   # 2-core
-          - medium  # 4-core
-          - large   # 8-core
-          - xlarge  # 16-core
+      # Note: For GitHub Business plans, you can also use larger runners
+      # by changing the runs-on values to: ubuntu-latest-4-core, ubuntu-latest-8-core, 
+      # or ubuntu-latest-16-core if your plan supports it
 
 # Cancel in-progress runs of the same workflow on the same branch
 concurrency:
@@ -41,10 +34,8 @@ jobs:
   # First job to prepare shared environments and variables
   prepare:
     name: Prepare Build Environment
-    runs-on: ${{ github.event.inputs.runner_size == 'small' && 'ubuntu-latest-2-core' || 
-                 github.event.inputs.runner_size == 'large' && 'ubuntu-latest-8-core' || 
-                 github.event.inputs.runner_size == 'xlarge' && 'ubuntu-latest-16-core' || 
-                 'ubuntu-latest-4-core' }}
+    # Use standard runner names
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       timestamp: ${{ steps.timestamp.outputs.value }}
@@ -63,10 +54,8 @@ jobs:
   build-and-push:
     name: Build ${{ matrix.image }}
     needs: prepare
-    runs-on: ${{ github.event.inputs.runner_size == 'small' && 'ubuntu-latest-2-core' || 
-                 github.event.inputs.runner_size == 'large' && 'ubuntu-latest-8-core' || 
-                 github.event.inputs.runner_size == 'xlarge' && 'ubuntu-latest-16-core' || 
-                 'ubuntu-latest-4-core' }}
+    # Use standard runner names
+    runs-on: ubuntu-latest
     strategy:
       matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
       fail-fast: false
