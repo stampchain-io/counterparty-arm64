@@ -747,6 +747,7 @@ Resources:
           echo "Deployment completed. Bitcoin and Counterparty services are now starting."
           echo "Check status with: ~/check-sync-status.sh"
           echo "Deploy time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+          echo "Build version: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 
 Outputs:
   InstanceId:
