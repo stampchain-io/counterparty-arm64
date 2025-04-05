@@ -780,9 +780,69 @@ Resources:
           chmod +x /home/ubuntu/check-sync-status.sh
           chown ubuntu:ubuntu /home/ubuntu/check-sync-status.sh /home/ubuntu/common.sh
           
+          # Set up system maintenance and security scripts
+          log_info "Setting up system maintenance and security scripts..."
+          
+          # Set up system-maintenance.sh
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/system-maintenance.sh /usr/local/bin/
+          chmod +x /usr/local/bin/system-maintenance.sh
+          
+          # Set up unattended-upgrades
+          log_info "Setting up unattended-upgrades for automatic security updates..."
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/setup-unattended-upgrades.sh /usr/local/bin/
+          chmod +x /usr/local/bin/setup-unattended-upgrades.sh
+          /usr/local/bin/setup-unattended-upgrades.sh
+          
+          # Set up security check script
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/security-check.sh /usr/local/bin/
+          chmod +x /usr/local/bin/security-check.sh
+          
+          # Add weekly cron job for system maintenance
+          echo "# Weekly system maintenance job for Counterparty ARM64" > /etc/cron.d/counterparty-maintenance
+          echo "# Run at 3:30 AM every Sunday" >> /etc/cron.d/counterparty-maintenance
+          echo "30 3 * * 0 root /usr/local/bin/system-maintenance.sh > /dev/null 2>&1" >> /etc/cron.d/counterparty-maintenance
+          echo "# Run security check at 4:30 AM every Monday" >> /etc/cron.d/counterparty-maintenance
+          echo "30 4 * * 1 root /usr/local/bin/security-check.sh > /dev/null 2>&1" >> /etc/cron.d/counterparty-maintenance
+          
+          # Set up log rotation
+          log_info "Setting up log rotation..."
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/counterparty-logrotate.conf /etc/logrotate.d/counterparty
+          chmod 644 /etc/logrotate.d/counterparty
+          
+          # Force run logrotate once to make sure it works
+          logrotate -f /etc/logrotate.d/counterparty
+          
           # Check-sync-status.sh is still useful for monitoring, but we don't need to add it to cron
           # Users can add it to cron manually if they want hourly status checks
           
+          # Copy monitoring scripts for disk usage and bitcoin sync
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/check-disk-usage.sh /usr/local/bin/
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/monitor-bitcoin.sh /usr/local/bin/
+          cp /home/ubuntu/counterparty-arm64/aws/scripts/disk-usage-analysis.sh /usr/local/bin/
+          chmod +x /usr/local/bin/check-disk-usage.sh /usr/local/bin/monitor-bitcoin.sh /usr/local/bin/disk-usage-analysis.sh
+
+          # Add daily cron job for disk usage monitoring
+          echo "# Daily monitoring jobs for Counterparty ARM64" > /etc/cron.d/counterparty-monitoring
+          echo "# Check disk usage at 2:00 AM daily" >> /etc/cron.d/counterparty-monitoring
+          echo "0 2 * * * root /usr/local/bin/check-disk-usage.sh > /dev/null 2>&1" >> /etc/cron.d/counterparty-monitoring
+          echo "# Check Bitcoin sync status at 6:00 AM daily" >> /etc/cron.d/counterparty-monitoring
+          echo "0 6 * * * root /usr/local/bin/monitor-bitcoin.sh --host localhost --port 8332 --user rpc --pass rpc > /dev/null 2>&1" >> /etc/cron.d/counterparty-monitoring
+          
+          # Set up basic SSH hardening
+          log_info "Applying basic SSH security hardening..."
+          if [ -f /etc/ssh/sshd_config ]; then
+              # Disable root login
+              sed -i 's/^#PermitRootLogin yes/PermitRootLogin no/g' /etc/ssh/sshd_config
+              # Use Protocol 2 only
+              if ! grep -q "^Protocol 2" /etc/ssh/sshd_config; then
+                  echo "Protocol 2" >> /etc/ssh/sshd_config
+              fi
+              # Restart SSH to apply changes - only if not in the middle of setup
+              if systemctl is-active --quiet sshd; then
+                  systemctl restart sshd
+              fi
+          fi
+
           echo "Deployment completed. Bitcoin and Counterparty services are now starting."
           echo "Check status with: ~/check-sync-status.sh"
           echo "Deploy time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
