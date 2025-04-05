@@ -84,6 +84,7 @@ Options:
 - `monitor-bitcoin.sh`: Monitors Bitcoin node and logs status
 - `check-sync-status.sh`: Checks sync status of both Bitcoin and Counterparty
 - `disk-usage-analysis.sh`: Provides detailed analysis of disk usage to validate volume sizing
+- `monitor-st1-volume.sh`: Comprehensive monitoring of ST1 volume usage with recommendations
 
 ## CloudFormation Deployment
 
