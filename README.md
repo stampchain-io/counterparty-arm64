@@ -303,7 +303,7 @@ The workflow automatically uploads template files as artifacts and updates the D
 | `xcparty/counterparty-core-arm64` | `develop` | ✅ Available | ~1207.1 MB |
 
 
-> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: 2025-04-05 03:22 UTC
+> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: 2025-04-05 05:58 UTC
 ## Directory Structure
 
 ```
