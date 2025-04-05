@@ -382,25 +382,93 @@ else
             fi
         fi
         
-        # Update stack
+        # Create a streamlined version of UserData to avoid size limitations
+        log_info "Optimizing CloudFormation template to avoid UserData size limits..."
+        TEMP_DIR=$(mktemp -d)
+        OPTIMIZED_TEMPLATE_PATH="$TEMP_DIR/optimized-template.yml"
+        
+        # Extract and modify UserData script to reduce size
+        awk '
+        BEGIN { in_user_data = 0; print_line = 1; }
+        /^ *UserData:/ { in_user_data = 1; print_line = 1; print; next; }
+        /^ *Fn::Base64:/ && in_user_data { print_line = 1; print; next; }
+        /^ *!Sub/ && in_user_data { 
+            print "          !Sub |"; 
+            print "            #!/bin/bash"; 
+            print "            # Compressed UserData script - download and run setup from S3"; 
+            print "            apt-get update && apt-get install -y curl";
+            print "            mkdir -p /tmp/setup";
+            print "            curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh";
+            print "            chmod +x /tmp/setup/bootstrap.sh";
+            print "            /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken}";
+            in_user_data = 0;
+            next;
+        }
+        in_user_data && /^ *\|/ { print_line = 0; next; }
+        !in_user_data || print_line { print; }
+        ' "$TEMPLATE_PATH" > "$OPTIMIZED_TEMPLATE_PATH"
+        
+        # Note to create bootstrap.sh file
+        log_warning "IMPORTANT: You need to create a bootstrap.sh file in the Github repository"
+        log_warning "The bootstrap.sh file should contain the full setup script from the CloudFormation template"
+        
+        # Update stack with optimized template
         aws cloudformation update-stack \
           --region "$AWS_REGION" \
           --stack-name "$STACK_NAME" \
-          --template-body "file://$TEMPLATE_PATH" \
+          --template-body "file://$OPTIMIZED_TEMPLATE_PATH" \
           --capabilities CAPABILITY_IAM \
           --parameters "${PARAMETERS_TO_USE[@]}"
+        
+        # Clean up temp files
+        rm -rf "$TEMP_DIR"
         
         OPERATION_TYPE="update"
         WAIT_COMMAND="stack-update-complete"
     else
-        # Create new stack
+        # Create new stack with optimized UserData
         log_info "Creating CloudFormation stack: $STACK_NAME..."
+        
+        # Create a streamlined version of UserData to avoid size limitations
+        log_info "Optimizing CloudFormation template to avoid UserData size limits..."
+        TEMP_DIR=$(mktemp -d)
+        OPTIMIZED_TEMPLATE_PATH="$TEMP_DIR/optimized-template.yml"
+        
+        # Extract and modify UserData script to reduce size (same as in update section)
+        awk '
+        BEGIN { in_user_data = 0; print_line = 1; }
+        /^ *UserData:/ { in_user_data = 1; print_line = 1; print; next; }
+        /^ *Fn::Base64:/ && in_user_data { print_line = 1; print; next; }
+        /^ *!Sub/ && in_user_data { 
+            print "          !Sub |"; 
+            print "            #!/bin/bash"; 
+            print "            # Compressed UserData script - download and run setup from S3"; 
+            print "            apt-get update && apt-get install -y curl";
+            print "            mkdir -p /tmp/setup";
+            print "            curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh";
+            print "            chmod +x /tmp/setup/bootstrap.sh";
+            print "            /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken}";
+            in_user_data = 0;
+            next;
+        }
+        in_user_data && /^ *\|/ { print_line = 0; next; }
+        !in_user_data || print_line { print; }
+        ' "$TEMPLATE_PATH" > "$OPTIMIZED_TEMPLATE_PATH"
+        
+        # Note to create bootstrap.sh file
+        log_warning "IMPORTANT: You need to create a bootstrap.sh file in the Github repository"
+        log_warning "The bootstrap.sh file should contain the full setup script from the CloudFormation template"
+        
+        # Update stack with optimized template
         aws cloudformation create-stack \
           --region "$AWS_REGION" \
           --stack-name "$STACK_NAME" \
-          --template-body "file://$TEMPLATE_PATH" \
+          --template-body "file://$OPTIMIZED_TEMPLATE_PATH" \
           --capabilities CAPABILITY_IAM \
           --parameters "${ALL_PARAMETERS[@]}"
+        
+        # Clean up temp files
+        rm -rf "$TEMP_DIR"
         
         OPERATION_TYPE="creation"
         WAIT_COMMAND="stack-create-complete"
