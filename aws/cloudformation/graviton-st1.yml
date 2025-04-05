@@ -461,6 +461,7 @@ Resources:
             VolumeSize: !Ref RootVolumeSize
             VolumeType: gp3
             DeleteOnTermination: true
+      Monitoring: true  # Enable detailed CloudWatch monitoring
       Tags:
         - Key: Name
           Value: counterparty-arm64
@@ -847,6 +848,28 @@ Resources:
           echo "Check status with: ~/check-sync-status.sh"
           echo "Deploy time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
           echo "Build version: fixed-entrypoint-$(date -u +%s)"
+
+# CloudWatch alarms for monitoring
+  DataVolumeDiskSpaceAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: "Alert when ST1 volume usage exceeds 80%"
+      MetricName: DiskSpaceUtilization
+      Namespace: System/Linux
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: InstanceId
+          Value: !Ref CounterpartyInstance
+        - Name: MountPath
+          Value: /bitcoin-data
+        - Name: Filesystem
+          Value: /dev/nvme1n1
+      AlarmActions:
+        - !Ref AWS::NoValue  # Replace with actual SNS topic ARN if available
 
 Outputs:
   InstanceId:

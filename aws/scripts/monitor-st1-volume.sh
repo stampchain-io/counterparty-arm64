@@ -3,7 +3,7 @@
 # Especially useful when multiple Bitcoin networks are enabled
 
 # Usage: ./monitor-st1-volume.sh [server-ip] [user] [ssh-key]
-# Example: ./monitor-st1-volume.sh ec2-12-34-56-78.compute-1.amazonaws.com ubuntu ~/.ssh/id_rsa
+# Example: ./monitor-st1-volume.sh ec2-12-34-56-78.compute-1.amazonaws.com ubuntu ~/.ssh/key.pem
 
 # Default values
 SERVER_IP=$1

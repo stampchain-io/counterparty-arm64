@@ -33,7 +33,10 @@ fi
 
 # Create a text file with patterns to replace
 cat > sensitive-patterns.txt << EOF
-REDACTED_PATH/counterparty-arm64
+/Users/
+/home/
+~/.ssh/
+*.pem
 EOF
 
 # Use BFG to remove sensitive data
