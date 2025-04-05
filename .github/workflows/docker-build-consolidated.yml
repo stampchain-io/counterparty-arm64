@@ -105,25 +105,22 @@ jobs:
           ENV PATH="/root/.cargo/bin:${PATH}"
 
           # Install build tools
-          RUN pip3 install maturin wheel setuptools
-
-          # Create wheels directory
-          RUN mkdir -p /wheels
+          RUN pip3 install maturin setuptools
 
           # Copy README first for more efficient layer caching
           COPY README.md /README.md
 
-          # Install counterparty-rs
+          # Install counterparty-rs directly
           COPY ./counterparty-rs /counterparty-rs
           WORKDIR /counterparty-rs
-          # Build wheel instead of installing directly
-          RUN pip3 wheel --no-deps . -w /wheels
+          # Install directly instead of using wheels
+          RUN pip3 install .
 
-          # Install counterparty-core
+          # Install counterparty-core directly
           COPY ./counterparty-core /counterparty-core
           WORKDIR /counterparty-core
-          # Build wheel instead of installing directly
-          RUN pip3 wheel --no-deps . -w /wheels
+          # Install directly instead of using wheels
+          RUN pip3 install .
 
           # Runtime stage (much smaller)
           FROM python:3.10-slim-bullseye
@@ -134,11 +131,9 @@ jobs:
               && apt-get clean \
               && rm -rf /var/lib/apt/lists/*
 
-          # Copy wheels from builder
-          COPY --from=builder /wheels /wheels
-
-          # Install packages from wheels
-          RUN pip3 install /wheels/*.whl && rm -rf /wheels
+          # Copy installed packages from builder
+          COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+          COPY --from=builder /usr/local/bin/counterparty-server /usr/local/bin/
 
           # Set working directory
           WORKDIR /app
@@ -294,25 +289,22 @@ jobs:
           ENV PATH="/root/.cargo/bin:${PATH}"
 
           # Install build tools
-          RUN pip3 install maturin wheel setuptools
-
-          # Create wheels directory
-          RUN mkdir -p /wheels
+          RUN pip3 install maturin setuptools
 
           # Copy README first for more efficient layer caching
           COPY README.md /README.md
 
-          # Install counterparty-rs
+          # Install counterparty-rs directly
           COPY ./counterparty-rs /counterparty-rs
           WORKDIR /counterparty-rs
-          # Build wheel instead of installing directly
-          RUN pip3 wheel --no-deps . -w /wheels
+          # Install directly instead of using wheels
+          RUN pip3 install .
 
-          # Install counterparty-core
+          # Install counterparty-core directly
           COPY ./counterparty-core /counterparty-core
           WORKDIR /counterparty-core
-          # Build wheel instead of installing directly
-          RUN pip3 wheel --no-deps . -w /wheels
+          # Install directly instead of using wheels
+          RUN pip3 install .
 
           # Runtime stage (much smaller)
           FROM python:3.10-slim-bullseye
@@ -323,11 +315,9 @@ jobs:
               && apt-get clean \
               && rm -rf /var/lib/apt/lists/*
 
-          # Copy wheels from builder
-          COPY --from=builder /wheels /wheels
-
-          # Install packages from wheels
-          RUN pip3 install /wheels/*.whl && rm -rf /wheels
+          # Copy installed packages from builder
+          COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+          COPY --from=builder /usr/local/bin/counterparty-server /usr/local/bin/
 
           # Set working directory
           WORKDIR /app
@@ -500,25 +490,22 @@ jobs:
           ENV PATH="/root/.cargo/bin:${PATH}"
 
           # Install build tools
-          RUN pip3 install maturin wheel setuptools
-
-          # Create wheels directory
-          RUN mkdir -p /wheels
+          RUN pip3 install maturin setuptools
 
           # Copy README first for more efficient layer caching
           COPY README.md /README.md
 
-          # Install counterparty-rs
+          # Install counterparty-rs directly
           COPY ./counterparty-rs /counterparty-rs
           WORKDIR /counterparty-rs
-          # Build wheel instead of installing directly
-          RUN pip3 wheel --no-deps . -w /wheels
+          # Install directly instead of using wheels
+          RUN pip3 install .
 
-          # Install counterparty-core
+          # Install counterparty-core directly
           COPY ./counterparty-core /counterparty-core
           WORKDIR /counterparty-core
-          # Build wheel instead of installing directly
-          RUN pip3 wheel --no-deps . -w /wheels
+          # Install directly instead of using wheels
+          RUN pip3 install .
 
           # Runtime stage (much smaller)
           FROM python:3.10-slim-bullseye
@@ -529,11 +516,9 @@ jobs:
               && apt-get clean \
               && rm -rf /var/lib/apt/lists/*
 
-          # Copy wheels from builder
-          COPY --from=builder /wheels /wheels
-
-          # Install packages from wheels
-          RUN pip3 install /wheels/*.whl && rm -rf /wheels
+          # Copy installed packages from builder
+          COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+          COPY --from=builder /usr/local/bin/counterparty-server /usr/local/bin/
 
           # Set working directory
           WORKDIR /app
