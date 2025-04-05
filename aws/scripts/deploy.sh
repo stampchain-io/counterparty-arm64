@@ -177,6 +177,31 @@ done
 # CloudFormation template path
 TEMPLATE_PATH="$REPO_DIR/aws/cloudformation/graviton-st1.yml"
 
+# Auto-detect existing stack info if we're updating
+if [ "$UPDATE_STACK" = true ]; then
+    log_info "Checking existing stack configuration for '$STACK_NAME'..."
+    
+    # Check if stack exists and get security group info
+    if aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$AWS_REGION" &>/dev/null; then
+        # Get existing instance ID from stack
+        INSTANCE_ID=$(aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" --region "$AWS_REGION" \
+                    --query "StackResources[?ResourceType=='AWS::EC2::Instance'].PhysicalResourceId" --output text)
+        
+        if [ -n "$INSTANCE_ID" ]; then
+            # Get security group ID from the instance
+            SG_ID=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" \
+                  --query "Reservations[].Instances[].SecurityGroups[0].GroupId" --output text)
+            
+            if [ -n "$SG_ID" ]; then
+                log_info "Found existing security group: $SG_ID"
+                # Auto-set USE_EXISTING_SG to true and set security group ID
+                USE_EXISTING_SG="true"
+                EXISTING_SECURITY_GROUP_ID="$SG_ID"
+            fi
+        fi
+    fi
+fi
+
 # Validate required parameters
 validation_error=false
 if [ -z "$AWS_VPC_ID" ]; then
