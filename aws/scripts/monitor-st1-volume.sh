@@ -35,35 +35,8 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Check if the server is reachable
-info "Checking if server $SERVER_IP is reachable..."
-if ! ping -c 1 -W 2 $SERVER_IP &> /dev/null; then
-    error "Server $SERVER_IP is not reachable."
-    
-    # Check CloudFormation stack status
-    info "Checking CloudFormation stack status..."
-    STACK_STATUS=$(aws cloudformation describe-stacks --stack-name counterparty-server-6 \
-        --query "Stacks[0].StackStatus" --output text 2>/dev/null)
-    
-    if [ -n "$STACK_STATUS" ]; then
-        info "Stack status: $STACK_STATUS"
-        
-        if [ "$STACK_STATUS" == "CREATE_IN_PROGRESS" ]; then
-            info "Stack creation is still in progress. Please wait..."
-        elif [ "$STACK_STATUS" == "CREATE_COMPLETE" ]; then
-            info "Stack creation is complete but server might still be initializing."
-            info "You can check CloudFormation events for more details."
-        else
-            warning "Stack status indicates there might be an issue."
-        fi
-    else
-        error "Could not retrieve stack status."
-    fi
-    
-    exit 1
-fi
-
-info "Server $SERVER_IP is reachable. Checking SSH connectivity..."
+# Check if the server is reachable via SSH directly (skip ping which may be blocked)
+info "Checking if server $SERVER_IP is reachable via SSH..."
 
 # Test SSH connectivity
 if ! ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$SSH_KEY" "$SSH_USER@$SERVER_IP" echo "SSH connection successful" &> /dev/null; then
