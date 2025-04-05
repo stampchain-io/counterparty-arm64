@@ -47,8 +47,8 @@ Conditions:
   UseExistingSG: !Equals [!Ref UseExistingSecurityGroup, "true"]
   CreateNewSG: !Not [!Condition UseExistingSG]
   UseUbuntu2404: !Equals [!Ref UbuntuVersion, "24.04"]
-  UseUbuntu2204: !Equals [!Ref UbuntuVersion, "22.04"]
   PublicRpcEnabled: !Equals [!Ref PublicRpcAccess, "true"]
+  EnableSnapshotsCondition: !Equals [!Ref EnableSnapshots, "true"]
   
   # Network profile conditions
   UseMainnetProfile: !Equals [!Ref NetworkProfile, "mainnet"]
@@ -68,6 +68,10 @@ Metadata:
           - NewKeyPairName
           - RootVolumeSize
           - DataVolumeSize
+      - Label:
+          default: "Storage and Backup"
+        Parameters:
+          - EnableSnapshots
       - Label:
           default: "Network Configuration"
         Parameters:
@@ -142,8 +146,8 @@ Parameters:
   ExistingSecurityGroupId:
     Description: ID of existing security group (only used if UseExistingSecurityGroup is true)
     Type: String
-    Default: "sg-xxxxxxxxxxxxxxxxx"
-    AllowedPattern: "^$|^sg-[a-zA-Z0-9]{8}$|^sg-[a-zA-Z0-9]{17}$"
+    Default: "sg-12345678abcdef012"
+    AllowedPattern: "^sg-[a-zA-Z0-9]{8,17}$"
     ConstraintDescription: "Security Group ID must be in the format sg-xxxxxxxx or sg-xxxxxxxxxxxxxxxxx"
     
   PublicRpcAccess:
@@ -158,16 +162,16 @@ Parameters:
   InstanceType:
     Description: EC2 instance type (Graviton-based)
     Type: String
-    Default: m7g.large
+    Default: t4g.large
     AllowedValues:
-      - t4g.large     # Lowest cost, burstable performance
+      - t4g.large     # Lowest cost, burstable performance (~$24.50/month)
       - t4g.xlarge    # Burstable, more memory
       - m6g.large     # Previous gen, consistent performance
       - m6g.xlarge    # Previous gen, higher memory
-      - m7g.large     # Current gen, good balance (recommended)
+      - m7g.large     # Current gen, good balance (more expensive)
       - m7g.xlarge    # Current gen, higher memory
       - m7g.2xlarge   # Current gen, highest performance
-      - c7g.large     # Compute optimized, lower cost
+      - c7g.large     # Compute optimized, good for blockchain (~$28/month)
       - c7g.xlarge    # Compute optimized, higher performance
     ConstraintDescription: Must be a valid Graviton-based instance type.
   
@@ -229,6 +233,14 @@ Parameters:
       - "testnet3"
       - "testnet4"
       - "regtest"
+      
+  EnableSnapshots:
+    Description: Enable automatic EBS snapshots of the data volume
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
 
 Resources:
   # Security Group for the Counterparty node (created if UseExistingSecurityGroup is false)
@@ -407,20 +419,23 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      Policies:
-        - PolicyName: CounterpartySnapshotPolicy
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ec2:CreateSnapshot
-                  - ec2:DeleteSnapshot
-                  - ec2:DescribeSnapshots
-                  - ec2:DescribeVolumes
-                  - ec2:ModifySnapshotAttribute
-                  - ec2:ResetSnapshotAttribute
-                Resource: '*'
+      Policies: 
+        - !If
+          - EnableSnapshotsCondition
+          - PolicyName: CounterpartySnapshotPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - ec2:CreateSnapshot
+                    - ec2:DeleteSnapshot
+                    - ec2:DescribeSnapshots
+                    - ec2:DescribeVolumes
+                    - ec2:ModifySnapshotAttribute
+                    - ec2:ResetSnapshotAttribute
+                  Resource: '*'
+          - !Ref AWS::NoValue
 
   # Instance profile
   CounterpartyInstanceProfile:
@@ -821,6 +836,39 @@ Resources:
           cp /home/ubuntu/counterparty-arm64/aws/scripts/monitor-bitcoin.sh /usr/local/bin/
           cp /home/ubuntu/counterparty-arm64/aws/scripts/disk-usage-analysis.sh /usr/local/bin/
           chmod +x /usr/local/bin/check-disk-usage.sh /usr/local/bin/monitor-bitcoin.sh /usr/local/bin/disk-usage-analysis.sh
+          
+          # Set up monthly snapshot if enabled
+          if [ "${EnableSnapshots}" = "true" ]; then
+              echo "Setting up monthly EBS snapshot cron job..."
+              
+              # Create the snapshot script line by line instead of heredoc
+              echo '#!/bin/bash' > /usr/local/bin/create-snapshot.sh
+              echo '# Script to create a snapshot of the data volume' >> /usr/local/bin/create-snapshot.sh
+              echo 'VOLUME_ID=$(aws ec2 describe-instances --instance-ids $(curl -s http://169.254.169.254/latest/meta-data/instance-id) --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName==\`/dev/sdf\`].Ebs.VolumeId" --output text)' >> /usr/local/bin/create-snapshot.sh
+              echo 'if [ -z "$VOLUME_ID" ]; then' >> /usr/local/bin/create-snapshot.sh
+              echo '  echo "Could not determine volume ID, exiting"' >> /usr/local/bin/create-snapshot.sh
+              echo '  exit 1' >> /usr/local/bin/create-snapshot.sh
+              echo 'fi' >> /usr/local/bin/create-snapshot.sh
+              echo '# Create the snapshot with a descriptive name' >> /usr/local/bin/create-snapshot.sh
+              echo 'SNAPSHOT_DESCRIPTION="Counterparty data volume backup $(date +%Y-%m-%d)"' >> /usr/local/bin/create-snapshot.sh
+              echo 'aws ec2 create-snapshot --volume-id $VOLUME_ID --description "$SNAPSHOT_DESCRIPTION" --tag-specifications "ResourceType=snapshot,Tags=[{Key=Name,Value=counterparty-data-backup-$(date +%Y%m%d)}]"' >> /usr/local/bin/create-snapshot.sh
+              echo '# Keep only the last 2 snapshots - delete older ones' >> /usr/local/bin/create-snapshot.sh
+              echo 'OLD_SNAPSHOTS=$(aws ec2 describe-snapshots --filters "Name=volume-id,Values=$VOLUME_ID" --query "Snapshots[?StartTime!=\`null\`].[SnapshotId,StartTime]" --output text | sort -k2 | head -n -2 | awk "{print \$1}")' >> /usr/local/bin/create-snapshot.sh
+              echo 'for SNAPSHOT in $OLD_SNAPSHOTS; do' >> /usr/local/bin/create-snapshot.sh
+              echo '  echo "Deleting old snapshot: $SNAPSHOT"' >> /usr/local/bin/create-snapshot.sh
+              echo '  aws ec2 delete-snapshot --snapshot-id $SNAPSHOT' >> /usr/local/bin/create-snapshot.sh
+              echo 'done' >> /usr/local/bin/create-snapshot.sh
+              
+              chmod +x /usr/local/bin/create-snapshot.sh
+              
+              # Add monthly cron job
+              echo "# Monthly snapshot of Counterparty data volume" > /etc/cron.d/counterparty-snapshots
+              echo "0 2 1 * * root /usr/local/bin/create-snapshot.sh > /var/log/counterparty-snapshot.log 2>&1" >> /etc/cron.d/counterparty-snapshots
+              
+              echo "Snapshot scheduler configured"
+          else
+              echo "Automatic snapshots are disabled"
+          fi
 
           # Add daily cron job for disk usage monitoring
           echo "# Daily monitoring jobs for Counterparty ARM64" > /etc/cron.d/counterparty-monitoring
@@ -904,24 +952,25 @@ Outputs:
     Value: !If
       - UseExistingSG
       - !Sub "Using existing security group '${ExistingSecurityGroupId}'"
-      - !If
-        - CreateNewSG
-        - !Sub "New security group '${CounterpartySecurityGroup}' was created."
-        - "Security group information not available."
+      - !Sub "New security group '${CounterpartySecurityGroup}' was created."
         
   UbuntuInfo:
     Description: Information about the Ubuntu version used
     Value: !If
       - UseUbuntu2404
       - "Using Ubuntu 24.04 LTS (Noble Numbat)"
-      - !If
-        - UseUbuntu2204
-        - "Using Ubuntu 22.04 LTS (Jammy Jellyfish)"
-        - "Using unspecified Ubuntu version"
+      - "Using Ubuntu 22.04 LTS (Jammy Jellyfish)"
       
   NetworkInfo:
     Description: Information about the selected network profile
     Value: !Sub "Using ${NetworkProfile} network profile"
+    
+  SnapshotsEnabled:
+    Description: Information about snapshot configuration
+    Value: !If
+      - EnableSnapshotsCondition
+      - "Automatic monthly EBS snapshots are enabled"
+      - "Automatic EBS snapshots are disabled"
     
   StartupInfo:
     Description: Information on how to check status and logs
