@@ -55,13 +55,14 @@ USE_EXISTING_SG=${USE_EXISTING_SG:-"false"}
 EXISTING_SECURITY_GROUP_ID=${EXISTING_SECURITY_GROUP_ID:-""}
 PUBLIC_RPC_ACCESS=${PUBLIC_RPC_ACCESS:-"false"}
 AWS_KEY_NAME=${AWS_KEY_NAME:-""}
-AWS_INSTANCE_TYPE=${AWS_INSTANCE_TYPE:-"m7g.xlarge"}
+AWS_INSTANCE_TYPE=${AWS_INSTANCE_TYPE:-"t4g.large"}
 ROOT_VOLUME_SIZE=${ROOT_VOLUME_SIZE:-20}
 DATA_VOLUME_SIZE=${DATA_VOLUME_SIZE:-1000}
 BITCOIN_VERSION=${BITCOIN_VERSION:-"26.0"}
 COUNTERPARTY_BRANCH=${COUNTERPARTY_BRANCH:-"master"}
 UBUNTU_VERSION=${UBUNTU_VERSION:-"24.04"}
 NETWORK_PROFILE=${NETWORK_PROFILE:-"mainnet"}
+ENABLE_SNAPSHOTS=${ENABLE_SNAPSHOTS:-"false"}
 GITHUB_TOKEN=${GITHUB_TOKEN:-""}
 STACK_NAME=${STACK_NAME:-"counterparty-arm64"}
 
@@ -227,6 +228,12 @@ log_info "  Data Volume Size: $DATA_VOLUME_SIZE GB"
 log_info "  Bitcoin Version: $BITCOIN_VERSION"
 log_info "  Counterparty Branch: $COUNTERPARTY_BRANCH"
 log_info "  Ubuntu Version: $UBUNTU_VERSION"
+log_info "  Network Profile: $NETWORK_PROFILE"
+if [ "$ENABLE_SNAPSHOTS" = "true" ]; then
+    log_info "  EBS Snapshots: Enabled (monthly)"
+else
+    log_info "  EBS Snapshots: Disabled"
+fi
 
 # Confirm deployment
 if [ "$DRY_RUN" = "true" ] || [ "$AUTO_CONFIRM" = "true" ]; then
@@ -301,6 +308,7 @@ else
         "ParameterKey=UbuntuVersion,ParameterValue=\"$UBUNTU_VERSION\""
         "ParameterKey=GitHubToken,ParameterValue=\"$GITHUB_TOKEN\""
         "ParameterKey=NetworkProfile,ParameterValue=\"$NETWORK_PROFILE\""
+        "ParameterKey=EnableSnapshots,ParameterValue=\"$ENABLE_SNAPSHOTS\""
     )
     
     # Counterparty-only parameters for update-counterparty-only mode
