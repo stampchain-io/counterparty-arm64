@@ -88,7 +88,7 @@ jobs:
         run: |
           cat > /tmp/counterparty-core/Dockerfile.arm64 << 'EOF'
           # Build stage
-          FROM --platform=linux/arm64 python:3.10-bullseye AS builder
+          FROM python:3.10-bullseye AS builder
 
           # Install dependencies for ARM64
           RUN apt-get update && apt-get install -y \
@@ -105,7 +105,10 @@ jobs:
           ENV PATH="/root/.cargo/bin:${PATH}"
 
           # Install build tools
-          RUN pip3 install maturin wheel
+          RUN pip3 install maturin wheel setuptools
+
+          # Create wheels directory
+          RUN mkdir -p /wheels
 
           # Copy README first for more efficient layer caching
           COPY README.md /README.md
@@ -114,16 +117,16 @@ jobs:
           COPY ./counterparty-rs /counterparty-rs
           WORKDIR /counterparty-rs
           # Build wheel instead of installing directly
-          RUN pip3 wheel . -w /wheels
+          RUN pip3 wheel --no-deps . -w /wheels
 
           # Install counterparty-core
           COPY ./counterparty-core /counterparty-core
           WORKDIR /counterparty-core
           # Build wheel instead of installing directly
-          RUN pip3 wheel . -w /wheels
+          RUN pip3 wheel --no-deps . -w /wheels
 
           # Runtime stage (much smaller)
-          FROM --platform=linux/arm64 python:3.10-slim-bullseye
+          FROM python:3.10-slim-bullseye
 
           # Install only runtime dependencies
           RUN apt-get update && apt-get install -y \
@@ -274,7 +277,7 @@ jobs:
         run: |
           cat > /tmp/counterparty-core/Dockerfile.arm64 << 'EOF'
           # Build stage
-          FROM --platform=linux/arm64 python:3.10-bullseye AS builder
+          FROM python:3.10-bullseye AS builder
 
           # Install dependencies for ARM64
           RUN apt-get update && apt-get install -y \
@@ -291,7 +294,10 @@ jobs:
           ENV PATH="/root/.cargo/bin:${PATH}"
 
           # Install build tools
-          RUN pip3 install maturin wheel
+          RUN pip3 install maturin wheel setuptools
+
+          # Create wheels directory
+          RUN mkdir -p /wheels
 
           # Copy README first for more efficient layer caching
           COPY README.md /README.md
@@ -300,16 +306,16 @@ jobs:
           COPY ./counterparty-rs /counterparty-rs
           WORKDIR /counterparty-rs
           # Build wheel instead of installing directly
-          RUN pip3 wheel . -w /wheels
+          RUN pip3 wheel --no-deps . -w /wheels
 
           # Install counterparty-core
           COPY ./counterparty-core /counterparty-core
           WORKDIR /counterparty-core
           # Build wheel instead of installing directly
-          RUN pip3 wheel . -w /wheels
+          RUN pip3 wheel --no-deps . -w /wheels
 
           # Runtime stage (much smaller)
-          FROM --platform=linux/arm64 python:3.10-slim-bullseye
+          FROM python:3.10-slim-bullseye
 
           # Install only runtime dependencies
           RUN apt-get update && apt-get install -y \
@@ -477,7 +483,7 @@ jobs:
         run: |
           cat > /tmp/counterparty-core/Dockerfile.arm64 << 'EOF'
           # Build stage
-          FROM --platform=linux/arm64 python:3.10-bullseye AS builder
+          FROM python:3.10-bullseye AS builder
 
           # Install dependencies for ARM64
           RUN apt-get update && apt-get install -y \
@@ -494,7 +500,10 @@ jobs:
           ENV PATH="/root/.cargo/bin:${PATH}"
 
           # Install build tools
-          RUN pip3 install maturin wheel
+          RUN pip3 install maturin wheel setuptools
+
+          # Create wheels directory
+          RUN mkdir -p /wheels
 
           # Copy README first for more efficient layer caching
           COPY README.md /README.md
@@ -503,16 +512,16 @@ jobs:
           COPY ./counterparty-rs /counterparty-rs
           WORKDIR /counterparty-rs
           # Build wheel instead of installing directly
-          RUN pip3 wheel . -w /wheels
+          RUN pip3 wheel --no-deps . -w /wheels
 
           # Install counterparty-core
           COPY ./counterparty-core /counterparty-core
           WORKDIR /counterparty-core
           # Build wheel instead of installing directly
-          RUN pip3 wheel . -w /wheels
+          RUN pip3 wheel --no-deps . -w /wheels
 
           # Runtime stage (much smaller)
-          FROM --platform=linux/arm64 python:3.10-slim-bullseye
+          FROM python:3.10-slim-bullseye
 
           # Install only runtime dependencies
           RUN apt-get update && apt-get install -y \
