@@ -33,7 +33,7 @@ services:
       - "9333:9333"
     environment:
       - DB_CACHE=6000
-      - BLOCKSONLY=1
+      - BLOCKSONLY=0  # Set to 0 to ensure RPC connectivity
       - MAXCONNECTIONS=25
       - MAXMEMPOOL=300
       - PARALLEL_BLOCKS=8
@@ -86,7 +86,7 @@ services:
       - "19333:19333"
     environment:
       - DB_CACHE=6000
-      - BLOCKSONLY=1
+      - BLOCKSONLY=0  # Set to 0 to ensure RPC connectivity
       - MAXCONNECTIONS=25
       - MAXMEMPOOL=300
       - PARALLEL_BLOCKS=8
@@ -140,7 +140,7 @@ services:
       - "49333:49333"
     environment:
       - DB_CACHE=6000
-      - BLOCKSONLY=1
+      - BLOCKSONLY=0  # Set to 0 to ensure RPC connectivity
       - MAXCONNECTIONS=25
       - MAXMEMPOOL=300
       - PARALLEL_BLOCKS=8
