@@ -153,6 +153,63 @@ CURRENT_BLOCKS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.blocks')
 HEADERS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.headers')
 VERIFICATION_PROGRESS=$(echo "$BLOCKCHAIN_INFO" | jq -r '.verificationprogress')
 FORMATTED_PROGRESS=$(printf "%.2f" $(echo "$VERIFICATION_PROGRESS * 100" | bc -l))
+IS_INITIAL_BLOCK_DOWNLOAD=$(echo "$BLOCKCHAIN_INFO" | jq -r '.initialblockdownload')
+
+# Get system resource usage
+log_info "Checking system resource usage..."
+CPU_USAGE=$(docker stats --no-stream $BITCOIN_CONTAINER --format "{{.CPUPerc}}" 2>/dev/null || echo "N/A")
+MEM_USAGE=$(docker stats --no-stream $BITCOIN_CONTAINER --format "{{.MemUsage}}" 2>/dev/null || echo "N/A")
+DISK_USAGE=$(docker exec $BITCOIN_CONTAINER du -sh /bitcoin/.bitcoin 2>/dev/null || echo "N/A")
+
+# Get network info
+NETWORK_INFO=$(docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getnetworkinfo 2>/dev/null)
+CONNECTIONS=$(echo "$NETWORK_INFO" | jq -r '.connections' 2>/dev/null || echo "N/A")
+
+# Get mempool info for transaction processing capacity
+MEMPOOL_INFO=$(docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getmempoolinfo 2>/dev/null)
+MEMPOOL_SIZE=$(echo "$MEMPOOL_INFO" | jq -r '.size' 2>/dev/null || echo "N/A")
+MEMPOOL_BYTES=$(echo "$MEMPOOL_INFO" | jq -r '.bytes' 2>/dev/null || echo "N/A")
+MEMPOOL_USAGE_MB=$(echo "scale=2; $MEMPOOL_BYTES / 1048576" | bc 2>/dev/null || echo "N/A")
+
+# Get dbcache setting from config
+DBCACHE_SETTING=$(docker exec $BITCOIN_CONTAINER grep -E "^dbcache=" /bitcoin/.bitcoin/bitcoin.conf 2>/dev/null | cut -d= -f2 || echo "N/A")
+
+# Store sync progress for timing estimation
+TIMESTAMP=$(date +%s)
+STATE_FILE="/tmp/bitcoin_sync_progress.dat"
+
+# Calculate sync speed and ETA
+if [ -f "$STATE_FILE" ]; then
+    # Load previous state
+    source "$STATE_FILE"
+    
+    # Calculate time difference
+    TIME_DIFF=$((TIMESTAMP - PREV_TIMESTAMP))
+    
+    if [ $TIME_DIFF -gt 60 ]; then  # Only calculate if at least 1 minute has passed
+        BLOCKS_DIFF=$((CURRENT_BLOCKS - PREV_BLOCKS))
+        
+        if [ $BLOCKS_DIFF -gt 0 ] && [ $TIME_DIFF -gt 0 ]; then
+            # Blocks per second
+            BLOCKS_PER_SECOND=$(echo "scale=4; $BLOCKS_DIFF / $TIME_DIFF" | bc)
+            # Blocks per hour
+            BLOCKS_PER_HOUR=$(echo "scale=2; $BLOCKS_PER_SECOND * 3600" | bc)
+            
+            # Estimated time remaining
+            if [ $BLOCKS_PER_SECOND != "0" ] && [ $HEADERS -gt $CURRENT_BLOCKS ]; then
+                BLOCKS_REMAINING=$((HEADERS - CURRENT_BLOCKS))
+                SECONDS_REMAINING=$(echo "scale=0; $BLOCKS_REMAINING / $BLOCKS_PER_SECOND" | bc)
+                HOURS_REMAINING=$(echo "scale=2; $SECONDS_REMAINING / 3600" | bc)
+                DAYS_REMAINING=$(echo "scale=2; $HOURS_REMAINING / 24" | bc)
+            fi
+        fi
+    fi
+fi
+
+# Save current state for next run
+echo "PREV_TIMESTAMP=$TIMESTAMP" > "$STATE_FILE"
+echo "PREV_BLOCKS=$CURRENT_BLOCKS" >> "$STATE_FILE"
+echo "PREV_PROGRESS=$VERIFICATION_PROGRESS" >> "$STATE_FILE"
 
 # Display the status
 log_info "Bitcoin Node Sync Status:"
@@ -168,9 +225,51 @@ if (( $(echo "$VERIFICATION_PROGRESS < 0.9999" | bc -l) )); then
     BLOCKS_REMAINING=$((HEADERS - CURRENT_BLOCKS))
     if [ $BLOCKS_REMAINING -gt 0 ]; then
         log_info "  Blocks Remaining: $BLOCKS_REMAINING"
+        
+        if [ ! -z "$BLOCKS_PER_HOUR" ]; then
+            log_info "  Sync Speed: $BLOCKS_PER_HOUR blocks/hour"
+            
+            if [ ! -z "$DAYS_REMAINING" ] && [ $(echo "$DAYS_REMAINING > 1" | bc) -eq 1 ]; then
+                log_info "  Estimated Time Remaining: $DAYS_REMAINING days"
+            elif [ ! -z "$HOURS_REMAINING" ]; then
+                log_info "  Estimated Time Remaining: $HOURS_REMAINING hours"
+            fi
+        fi
     fi
 else
     log_success "  Status: SYNCHRONIZED (Chain is up to date)"
+fi
+
+# Display resource usage
+log_info "System Resource Usage:"
+log_info "  CPU Usage: $CPU_USAGE"
+log_info "  Memory Usage: $MEM_USAGE"
+log_info "  Disk Usage: $DISK_USAGE"
+log_info "  Network Connections: $CONNECTIONS"
+log_info "  Mempool Size: $MEMPOOL_SIZE transactions ($MEMPOOL_USAGE_MB MB)"
+log_info "  DB Cache Setting: $DBCACHE_SETTING MB"
+
+# Provide optimization recommendations
+log_info "Performance Recommendations:"
+
+# Check dbcache setting (recommend 4-8GB for initial sync, less for running node)
+if [ "$DBCACHE_SETTING" != "N/A" ]; then
+    if [ $DBCACHE_SETTING -lt 4000 ] && [ "$IS_INITIAL_BLOCK_DOWNLOAD" = "true" ]; then
+        log_warning "  Consider increasing dbcache to at least 4000 MB for faster initial sync"
+    elif [ $DBCACHE_SETTING -gt 4000 ] && [ "$IS_INITIAL_BLOCK_DOWNLOAD" = "false" ]; then
+        log_warning "  Consider reducing dbcache to 1000-2000 MB after sync is complete to free up memory"
+    fi
+fi
+
+# Check connections
+if [ "$CONNECTIONS" != "N/A" ] && [ $CONNECTIONS -lt 8 ]; then
+    log_warning "  Low peer connections ($CONNECTIONS). More connections may improve sync speed."
+fi
+
+# Check if sync is stalled
+if [ ! -z "$BLOCKS_PER_HOUR" ] && [ $(echo "$BLOCKS_PER_HOUR < 1" | bc) -eq 1 ] && [ "$VERIFICATION_PROGRESS" != "1" ]; then
+    log_error "  Sync appears to be stalled. Check network connectivity and disk I/O."
+    log_info "  Try restarting the Bitcoin container: docker restart $BITCOIN_CONTAINER"
 fi
 
 # Check if Counterparty is running

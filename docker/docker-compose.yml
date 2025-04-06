@@ -31,6 +31,13 @@ services:
       - "8332:8332"
       - "9332:9332"
       - "9333:9333"
+    environment:
+      - DB_CACHE=6000
+      - BLOCKSONLY=1
+      - MAXCONNECTIONS=25
+      - MAXMEMPOOL=300
+      - PARALLEL_BLOCKS=8
+      - ASSUMEVALID=000000000000000000053b17c1c2e1ea8a965a6240ede8ffd0729f7f2e77283e
     command:
       - "-chain=main"
       - "-printtoconsole=1"
@@ -43,8 +50,6 @@ services:
       - "-addresstype=legacy"
       - "-txindex=1"
       - "-prune=0"
-      - "-dbcache=4000"
-      - "-mempoolfullrbf=1"
       - "-zmqpubrawtx=tcp://0.0.0.0:9332"
       - "-zmqpubhashtx=tcp://0.0.0.0:9332"
       - "-zmqpubsequence=tcp://0.0.0.0:9332"
@@ -79,6 +84,13 @@ services:
       - "18332:18332"
       - "19332:19332"
       - "19333:19333"
+    environment:
+      - DB_CACHE=6000
+      - BLOCKSONLY=1
+      - MAXCONNECTIONS=25
+      - MAXMEMPOOL=300
+      - PARALLEL_BLOCKS=8
+      - ASSUMEVALID=00000000000000790c04a99c018cd0a95afdec979cc49f50b45e82573da13848
     command: 
       - "-chain=test"
       - "-rpcallowip=0.0.0.0/0"
@@ -91,8 +103,6 @@ services:
       - "-addresstype=legacy"
       - "-txindex=1"
       - "-prune=0"
-      - "-dbcache=4000"
-      - "-mempoolfullrbf=1"
       - "-zmqpubrawtx=tcp://0.0.0.0:19332"
       - "-zmqpubhashtx=tcp://0.0.0.0:19332"
       - "-zmqpubsequence=tcp://0.0.0.0:19332"
@@ -128,6 +138,13 @@ services:
       - "48332:48332"
       - "49332:49332"
       - "49333:49333"
+    environment:
+      - DB_CACHE=6000
+      - BLOCKSONLY=1
+      - MAXCONNECTIONS=25
+      - MAXMEMPOOL=300
+      - PARALLEL_BLOCKS=8
+      - ASSUMEVALID=0000000000004ae2f3896ca8ecd41c460a35bf6257eda9468eb8b3dfc65e9b7b
     command: 
       - "-chain=testnet4"
       - "-rpcallowip=0.0.0.0/0"
@@ -140,8 +157,6 @@ services:
       - "-addresstype=legacy"
       - "-txindex=1"
       - "-prune=0"
-      - "-dbcache=4000"
-      - "-mempoolfullrbf=1"
       - "-zmqpubrawtx=tcp://0.0.0.0:49332"
       - "-zmqpubhashtx=tcp://0.0.0.0:49332"
       - "-zmqpubsequence=tcp://0.0.0.0:49332"
@@ -176,6 +191,12 @@ services:
       - "18443:18443"
       - "29332:29332"
       - "29333:29333"
+    environment:
+      - DB_CACHE=2000
+      - BLOCKSONLY=0
+      - MAXCONNECTIONS=15
+      - MAXMEMPOOL=100
+      - PARALLEL_BLOCKS=4
     command: 
       - "-chain=regtest"
       - "-rpcallowip=0.0.0.0/0"
@@ -188,8 +209,6 @@ services:
       - "-addresstype=legacy"
       - "-txindex=1"
       - "-prune=0"
-      - "-dbcache=4000"
-      - "-mempoolfullrbf=1"
       - "-zmqpubrawtx=tcp://0.0.0.0:29332"
       - "-zmqpubhashtx=tcp://0.0.0.0:29332"
       - "-zmqpubsequence=tcp://0.0.0.0:29332"

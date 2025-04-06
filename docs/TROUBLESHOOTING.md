@@ -150,15 +150,42 @@ git pull
 **Problem:** Bitcoin Core is syncing very slowly.
 
 **Solution:** 
-- Increase the dbcache parameter in docker-compose.yml
-- Optimize storage performance by ensuring I/O scheduler is properly configured:
+- Our deployment now includes optimized settings for initial blockchain synchronization
+- The following optimizations are automatically applied:
+  - Increased dbcache (6GB for initial sync)
+  - Enabled blocksonly mode during initial sync
+  - Reduced peer connections (25 connections during sync)
+  - Enabled assumevalid to skip signature verification
+  - Set parallel block validation for your CPU cores
 
+- You can check current sync status and estimated time remaining:
+```bash
+# Check sync status and estimated time remaining
+~/check-sync-status.sh
+```
+
+- After sync completes, you can switch to normal operating parameters:
+```bash
+# Run this after sync is complete
+~/counterparty-arm64/scripts/post-sync-optimization.sh
+```
+
+- For additional storage performance, optimize the I/O scheduler:
 ```bash
 # Check current I/O scheduler
 cat /sys/block/nvme1n1/queue/scheduler
 
 # Set deadline scheduler for ST1 volume
 echo 'ACTION=="add|change", KERNEL=="nvme1n1", ATTR{queue/scheduler}="deadline"' | sudo tee /etc/udev/rules.d/60-scheduler.rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+- If you're using newer kernel, try the following instead:
+```bash
+# Optimize for throughput on newer kernels
+echo 'ACTION=="add|change", KERNEL=="nvme1n1", ATTR{queue/scheduler}="none"' | sudo tee /etc/udev/rules.d/60-scheduler.rules
+echo 'ACTION=="add|change", KERNEL=="nvme1n1", ATTR{queue/nr_requests}="2048"' | sudo tee -a /etc/udev/rules.d/60-scheduler.rules
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
@@ -199,6 +226,42 @@ docker logs -f counterparty-core-counterparty-core-1
 # Check disk usage
 df -h /bitcoin-data
 ```
+
+### Counterparty Logs Not Found
+
+**Problem:** Unable to find Counterparty log files in the expected location:
+```bash
+sudo cat /root/.cache/counterparty/log/server.access.log
+cat: /root/.cache/counterparty/log/server.access.log: No such file or directory
+```
+
+**Solution:** 
+The Counterparty logs are stored in the container's mapped volume. Based on our volume mapping configuration, access logs are in the container volume and can be accessed as follows:
+
+```bash
+# Find the actual Counterparty container name
+COUNTERPARTY_CONTAINER=$(docker ps --format "{{.Names}}" | grep -E "counterparty.*core.*1$" | head -1)
+
+# Check recent logs from the container
+docker logs $COUNTERPARTY_CONTAINER | tail -50
+
+# To access the logs directly
+docker exec $COUNTERPARTY_CONTAINER cat /data/log/server.access.log
+
+# You can also check the logs in the host mount
+ls -la /bitcoin-data/counterparty/log/
+
+# And view the logs directly from the host
+cat /bitcoin-data/counterparty/log/server.access.log
+```
+
+This happens because we've configured the Counterparty container to use the following environment variables:
+```
+XDG_DATA_HOME=/data/
+XDG_LOG_HOME=/data/
+```
+
+Which redirects the logs to the mounted volume at `/data/` inside the container, which maps to `/bitcoin-data/counterparty` on the host.
 
 ### Backup and Restore
 

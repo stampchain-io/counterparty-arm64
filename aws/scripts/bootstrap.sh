@@ -226,10 +226,10 @@ su - ubuntu -c "cd counterparty-arm64 && chmod +x scripts/setup.sh && scripts/se
   su - ubuntu -c "cd counterparty-arm64 && scripts/setup.sh --bitcoin-version '$BITCOIN_VERSION' --counterparty-branch '$COUNTERPARTY_BRANCH' --data-dir '/bitcoin-data' --platform 'aws'"
 }
 
-# Create bitcoin.conf file with proper ZMQ settings
+# Create bitcoin.conf file with optimized settings for initial sync
 mkdir -p /bitcoin-data/bitcoin/.bitcoin
 cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
-# Bitcoin Core configuration file - Created by CloudFormation template
+# Bitcoin Core configuration file - Created by CloudFormation template with optimizations
 
 # Explicitly set the data directory
 datadir=/bitcoin/.bitcoin
@@ -244,8 +244,15 @@ listen=1
 addresstype=legacy
 txindex=1
 prune=0
-dbcache=4000
+
+# Performance Optimizations
+dbcache=6000
+maxmempool=300
+maxconnections=25
+blocksonly=1
 mempoolfullrbf=1
+assumevalid=000000000000000000053b17c1c2e1ea8a965a6240ede8ffd0729f7f2e77283e
+par=8
 
 # ZMQ Settings
 zmqpubrawtx=tcp://0.0.0.0:9332
