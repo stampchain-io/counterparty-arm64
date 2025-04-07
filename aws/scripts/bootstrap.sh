@@ -8,6 +8,15 @@ COUNTERPARTY_BRANCH=${2:-"develop"}
 COUNTERPARTY_TAG=${3:-""}
 NETWORK_PROFILE=${4:-"mainnet"}
 GITHUB_TOKEN=${5:-""}
+AWS_ACCESS_KEY=${6:-""}
+AWS_SECRET_KEY=${7:-""}
+
+# Set AWS credentials if provided
+if [ -n "$AWS_ACCESS_KEY" ] && [ -n "$AWS_SECRET_KEY" ]; then
+  echo "[INFO] Using provided AWS credentials"
+  export AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY"
+  export AWS_SECRET_ACCESS_KEY="$AWS_SECRET_KEY"
+fi
 
 # Logging functions
 log_info() {
@@ -286,14 +295,29 @@ EOC
     KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)
     
     echo "[INFO] Getting metadata for S3 object: s3://$BUCKET/$KEY"
-    S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text --no-sign-request"
+    
+    # Determine if we should use authentication for metadata request
+    USE_AUTH_FLAG=""
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+      echo "[INFO] Using AWS credentials for S3 metadata"
+      # No flag needed for authenticated requests (default behavior)
+      S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text"
+    else
+      echo "[INFO] Using anonymous access for S3 metadata (--no-sign-request)"
+      S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text --no-sign-request"
+    fi
     
     # Log the command in debug mode
     if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
       echo "[DEBUG] Running S3 metadata command: $S3_METADATA_CMD" >> /tmp/download_logs/s3_debug.log
     fi
     
-    EXPECTED_SIZE_BYTES=$(eval "$S3_METADATA_CMD" 2>/tmp/download_logs/s3_error.log || echo 0)
+    # Execute without eval to avoid the same issue we fixed earlier
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+      EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text 2>/tmp/download_logs/s3_error.log || echo 0)
+    else
+      EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text --no-sign-request 2>/tmp/download_logs/s3_error.log || echo 0)
+    fi
     S3_METADATA_RESULT=$?
     
     if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
@@ -313,14 +337,29 @@ EOC
     KEY=$(echo "$S3_URL" | cut -d'/' -f4-)
     
     echo "[INFO] Getting metadata for S3 object (from HTTP URL): s3://$BUCKET/$KEY"
-    S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text --no-sign-request"
+    
+    # Determine if we should use authentication for metadata request
+    USE_AUTH_FLAG=""
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+      echo "[INFO] Using AWS credentials for S3 metadata"
+      # No flag needed for authenticated requests (default behavior)
+      S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text"
+    else
+      echo "[INFO] Using anonymous access for S3 metadata (--no-sign-request)"
+      S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text --no-sign-request"
+    fi
     
     # Log the command in debug mode
     if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
       echo "[DEBUG] Running S3 metadata command: $S3_METADATA_CMD" >> /tmp/download_logs/s3_debug.log
     fi
     
-    EXPECTED_SIZE_BYTES=$(eval "$S3_METADATA_CMD" 2>/tmp/download_logs/s3_error.log || echo 0)
+    # Execute without eval to avoid the same issue we fixed earlier
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+      EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text 2>/tmp/download_logs/s3_error.log || echo 0)
+    else
+      EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text --no-sign-request 2>/tmp/download_logs/s3_error.log || echo 0)
+    fi
     S3_METADATA_RESULT=$?
     
     if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
@@ -363,6 +402,57 @@ EOC
       else
         echo "[INFO] AWS CLI installation verified."
       fi
+    else
+      echo "[INFO] AWS CLI installation verified: $(aws --version)"
+    fi
+    
+    # Check AWS credentials and configuration
+    echo "[INFO] Checking AWS credentials and configuration..."
+    
+    # Check if credentials are configured
+    if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+      echo "[DEBUG] AWS CLI credentials check:" >> /tmp/download_logs/aws_check.log
+      aws configure list >> /tmp/download_logs/aws_check.log 2>&1
+    fi
+    
+    # Check if we can list S3 buckets (basic permissions test)
+    if ! aws s3 ls >/dev/null 2>&1; then
+      echo "[WARNING] AWS credentials may not be properly configured. Checking if --no-sign-request will work..."
+      
+      # Extract bucket from the S3 URL to test
+      if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+        TEST_BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)
+      elif [[ "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* && "$BITCOIN_SNAPSHOT_PATH" == *s3* ]]; then
+        # Extract bucket from HTTP S3 URL
+        if [[ "$BITCOIN_SNAPSHOT_PATH" == *s3.amazonaws.com* ]]; then
+          # Format: https://<bucket>.s3.amazonaws.com/
+          TEST_BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^.]+).s3.amazonaws.com.*|\1|')
+        else
+          # Format: https://s3.amazonaws.com/<bucket>/
+          TEST_BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://s3.amazonaws.com/([^/]+)/.*|\1|')
+        fi
+      fi
+      
+      # Test if we can access the bucket without credentials
+      if [ -n "$TEST_BUCKET" ]; then
+        echo "[INFO] Testing access to bucket $TEST_BUCKET with --no-sign-request..."
+        if aws s3 ls "s3://$TEST_BUCKET" --no-sign-request >/dev/null 2>&1; then
+          echo "[INFO] Anonymous access to bucket $TEST_BUCKET works with --no-sign-request."
+        else
+          echo "[WARNING] Cannot access bucket $TEST_BUCKET even with --no-sign-request."
+          echo "[WARNING] If this is a private bucket, please ensure AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are properly set."
+          
+          # Check if credentials are set in environment
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "[ERROR] AWS credentials environment variables are not set."
+            echo "[INFO] Will attempt download with --no-sign-request anyway, but it may fail if the bucket is private."
+          else
+            echo "[INFO] AWS credential environment variables are set, but may not have permission to access the bucket."
+          fi
+        fi
+      fi
+    else
+      echo "[INFO] AWS credentials are properly configured and working."
     fi
   fi
   
@@ -389,14 +479,25 @@ EOC
       # Use timeout to prevent hangs and add progress monitoring
       S3_DOWNLOAD_CMD="aws s3 cp \"$BITCOIN_SNAPSHOT_PATH\" \"$TEMP_DIR/bitcoin-data.tar.gz\" --no-sign-request"
       
+      # Determine if we should use authentication
+      USE_AUTH_FLAG=""
+      if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+        echo "[INFO] Using AWS credentials for S3 download"
+        # No flag needed for authenticated requests (default behavior)
+        USE_AUTH_FLAG=""
+      else
+        echo "[INFO] Using anonymous access for S3 download (--no-sign-request)"
+        USE_AUTH_FLAG="--no-sign-request"
+      fi
+      
       if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
-        echo "[DEBUG] Running S3 download command: $S3_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
+        echo "[DEBUG] Running S3 download command: aws s3 cp \"$BITCOIN_SNAPSHOT_PATH\" \"$TEMP_DIR/bitcoin-data.tar.gz\" $USE_AUTH_FLAG" >> /tmp/download_logs/s3_debug.log
         # Execute directly without using eval
-        timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request 2>&1 | tee -a /tmp/download_logs/s3_download.log
+        timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" $USE_AUTH_FLAG 2>&1 | tee -a /tmp/download_logs/s3_download.log
         DOWNLOAD_RESULT=${PIPESTATUS[0]}
         echo "[DEBUG] S3 download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
       else
-        timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+        timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" $USE_AUTH_FLAG
         DOWNLOAD_RESULT=$?
       fi
       
@@ -429,14 +530,25 @@ EOC
         # Use timeout to prevent hangs
         S3_DOWNLOAD_CMD="aws s3 cp \"$S3_URL\" \"$TEMP_DIR/bitcoin-data.tar.gz\" --no-sign-request"
         
+        # Determine if we should use authentication
+        USE_AUTH_FLAG=""
+        if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+          echo "[INFO] Using AWS credentials for S3 download"
+          # No flag needed for authenticated requests (default behavior)
+          USE_AUTH_FLAG=""
+        else
+          echo "[INFO] Using anonymous access for S3 download (--no-sign-request)"
+          USE_AUTH_FLAG="--no-sign-request"
+        fi
+        
         if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
-          echo "[DEBUG] Running S3 download command: $S3_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
+          echo "[DEBUG] Running S3 download command: aws s3 cp \"$S3_URL\" \"$TEMP_DIR/bitcoin-data.tar.gz\" $USE_AUTH_FLAG" >> /tmp/download_logs/s3_debug.log
           # Execute directly without using eval
-          timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request 2>&1 | tee -a /tmp/download_logs/s3_download.log
+          timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" $USE_AUTH_FLAG 2>&1 | tee -a /tmp/download_logs/s3_download.log
           DOWNLOAD_RESULT=${PIPESTATUS[0]}
           echo "[DEBUG] S3 download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
         else
-          timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+          timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" $USE_AUTH_FLAG
           DOWNLOAD_RESULT=$?
         fi
         
