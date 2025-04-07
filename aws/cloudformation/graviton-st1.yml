@@ -503,8 +503,8 @@ Resources:
           apt-get update && apt-get install -y curl
           mkdir -p /tmp/setup
           
-          # Use stampchain-io main repo branch URL (commit hash added for versioning)
-          curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/49dd2bf/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh
+          # Use stampchain-io main branch
+          curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh
           chmod +x /tmp/setup/bootstrap.sh
           
           # Enable debug logging for download process
