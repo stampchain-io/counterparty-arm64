@@ -132,6 +132,38 @@ chmod -R 755 /bitcoin-data
 if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
   echo "[INFO] Bitcoin blockchain snapshot provided: $BITCOIN_SNAPSHOT_PATH"
   
+  # Convert https:// URL to s3:// format if it's an Amazon S3 URL
+  if [[ "$BITCOIN_SNAPSHOT_PATH" == https://*s3*.amazonaws.com/* ]]; then
+    echo "[INFO] Converting HTTP S3 URL to s3:// format for better performance"
+    
+    # Extract bucket and key from URL based on format pattern
+    if [[ "$BITCOIN_SNAPSHOT_PATH" == https://*s3.amazonaws.com/*/* ]]; then
+      # Format: https://s3.amazonaws.com/bucket-name/key
+      S3_BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https://s3\.amazonaws\.com/([^/]+)/.*|\1|')
+      S3_KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https://s3\.amazonaws\.com/[^/]+/(.*$)|\1|')
+    elif [[ "$BITCOIN_SNAPSHOT_PATH" == https://*-s3*.amazonaws.com/* ]]; then
+      # Format: https://bucket-name-s3-region.amazonaws.com/key
+      S3_BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https://([^.]+)-s3.*\.amazonaws\.com/.*|\1|')
+      S3_KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https://.*\.amazonaws\.com/(.*$)|\1|')
+    elif [[ "$BITCOIN_SNAPSHOT_PATH" == https://*.s3.amazonaws.com/* ]]; then
+      # Format: https://bucket-name.s3.amazonaws.com/key
+      S3_BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https://([^.]+)\.s3\.amazonaws\.com/.*|\1|')
+      S3_KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https://.*\.s3\.amazonaws\.com/(.*$)|\1|')
+    else
+      # Unknown format, keep the original URL
+      echo "[WARNING] Unrecognized S3 URL format, using original URL"
+      S3_BUCKET=""
+      S3_KEY=""
+    fi
+    
+    # Convert to s3:// format if bucket and key were successfully extracted
+    if [ -n "$S3_BUCKET" ] && [ -n "$S3_KEY" ]; then
+      ORIGINAL_URL="$BITCOIN_SNAPSHOT_PATH"
+      BITCOIN_SNAPSHOT_PATH="s3://$S3_BUCKET/$S3_KEY"
+      echo "[INFO] Converted URL: $ORIGINAL_URL → $BITCOIN_SNAPSHOT_PATH"
+    fi
+  fi
+  
   # Extract the snapshot height from the filename if it contains a height indicator
   # Format expected: bitcoin-data-YYYYMMDD-HHMM-HEIGHT.tar.gz where HEIGHT is the block height
   SNAPSHOT_HEIGHT=0
