@@ -271,6 +271,12 @@ EOC
     set -x  # Enable command echo
     # Create debug log directory
     mkdir -p /tmp/download_logs
+    
+    # Check AWS CLI version and availability
+    echo "[DEBUG] Checking AWS CLI installation:" >> /tmp/download_logs/aws_check.log
+    which aws >> /tmp/download_logs/aws_check.log 2>&1
+    echo "[DEBUG] AWS CLI version:" >> /tmp/download_logs/aws_check.log
+    aws --version >> /tmp/download_logs/aws_check.log 2>&1
   fi
   
   # Try to get the expected file size
@@ -331,6 +337,35 @@ EOC
   
   echo "[INFO] Expected snapshot file size: $EXPECTED_SIZE_KB KB"
   
+  # Verify AWS CLI works before attempting download
+  if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* || "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* ]]; then
+    echo "[INFO] Verifying AWS CLI functionality..."
+    if ! aws --version &>/dev/null; then
+      echo "[ERROR] AWS CLI not found or not working. Checking installation..."
+      # Try to fix AWS CLI installation
+      if [ -f "/usr/local/bin/aws" ]; then
+        echo "[INFO] AWS CLI found at /usr/local/bin/aws. Adding to PATH..."
+        export PATH="/usr/local/bin:$PATH"
+      elif [ -f "/usr/bin/aws" ]; then
+        echo "[INFO] AWS CLI found at /usr/bin/aws"
+      else
+        echo "[WARNING] AWS CLI not found. Attempting to install AWS CLI..."
+        apt-get update && apt-get install -y unzip
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip"
+        unzip -q awscliv2.zip
+        ./aws/install
+        rm -rf aws awscliv2.zip
+      fi
+      
+      # Verify again
+      if ! aws --version &>/dev/null; then
+        echo "[ERROR] AWS CLI installation failed. Will try wget as fallback for downloads."
+      else
+        echo "[INFO] AWS CLI installation verified."
+      fi
+    fi
+  fi
+  
   # Download with retries
   for RETRY in $(seq 1 $DOWNLOAD_RETRIES); do
     echo "[INFO] Download attempt $RETRY of $DOWNLOAD_RETRIES"
@@ -356,7 +391,8 @@ EOC
       
       if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
         echo "[DEBUG] Running S3 download command: $S3_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
-        timeout 7200 eval "$S3_DOWNLOAD_CMD" 2>&1 | tee -a /tmp/download_logs/s3_download.log
+        # Execute directly without using eval
+        timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request 2>&1 | tee -a /tmp/download_logs/s3_download.log
         DOWNLOAD_RESULT=${PIPESTATUS[0]}
         echo "[DEBUG] S3 download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
       else
@@ -395,7 +431,8 @@ EOC
         
         if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
           echo "[DEBUG] Running S3 download command: $S3_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
-          timeout 7200 eval "$S3_DOWNLOAD_CMD" 2>&1 | tee -a /tmp/download_logs/s3_download.log
+          # Execute directly without using eval
+          timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request 2>&1 | tee -a /tmp/download_logs/s3_download.log
           DOWNLOAD_RESULT=${PIPESTATUS[0]}
           echo "[DEBUG] S3 download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
         else
@@ -411,7 +448,8 @@ EOC
         
         if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
           echo "[DEBUG] Running HTTP download command: $HTTP_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
-          timeout 7200 eval "$HTTP_DOWNLOAD_CMD" 2>&1 | tee -a /tmp/download_logs/http_download.log
+          # Execute directly without using eval
+          timeout 7200 wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$BITCOIN_SNAPSHOT_PATH" --progress=dot:giga --tries=3 --timeout=300 --continue 2>&1 | tee -a /tmp/download_logs/http_download.log
           DOWNLOAD_RESULT=${PIPESTATUS[0]}
           echo "[DEBUG] HTTP download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
         else
@@ -499,14 +537,35 @@ EOC
   if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
     echo "[ERROR] Failed to download snapshot from $BITCOIN_SNAPSHOT_PATH"
     
-    # If we backed up and moved original data, restore it
-    if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
-      echo "[INFO] Restoring original blockchain data from backup..."
-      mkdir -p /bitcoin-data/bitcoin/
-      mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
+    # Try wget as a last resort for S3 URLs
+    if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+      # Convert s3:// URL to https:// public URL if possible
+      if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://*.public.* ]]; then
+        BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)
+        KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)
+        HTTP_URL="https://${BUCKET}.s3.amazonaws.com/${KEY}"
+        
+        echo "[INFO] Trying last-resort download with wget from $HTTP_URL..."
+        if wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$HTTP_URL" --progress=dot:giga --tries=3 --timeout=600 --continue; then
+          DOWNLOAD_SUCCESS=true
+          echo "[SUCCESS] Last-resort download successful!"
+        else
+          echo "[ERROR] Last-resort download also failed."
+        fi
+      fi
     fi
     
-    echo "[INFO] Continuing with existing data or from scratch..."
+    # If still not successful, restore backup if available
+    if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
+      # If we backed up and moved original data, restore it
+      if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
+        echo "[INFO] Restoring original blockchain data from backup..."
+        mkdir -p /bitcoin-data/bitcoin/
+        mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
+      fi
+      
+      echo "[INFO] Continuing with existing data or from scratch..."
+    fi
   else
     echo "[INFO] Snapshot downloaded successfully. Validating file integrity..."
     
@@ -544,7 +603,11 @@ EOC
       
       # Validate extraction
       if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
-        echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT)"
+        # Calculate extracted size for reporting
+        EXTRACTED_SIZE=$(du -sh /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate | awk '{sum+=$1} END {print sum}')
+        DOWNLOAD_SIZE=$(du -h "$TEMP_DIR/bitcoin-data.tar.gz" | cut -f1)
+        
+        echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT, downloaded $DOWNLOAD_SIZE, extracted ~$EXTRACTED_SIZE)"
         
         # Remove backup if extraction was successful
         if [ -d "$BACKUP_DIR" ]; then
