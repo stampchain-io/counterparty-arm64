@@ -330,7 +330,6 @@ else
         "ParameterKey=YourIp,ParameterValue=\"$YOUR_IP\""
         "ParameterKey=CreateNewKeyPair,ParameterValue=\"false\""
         "ParameterKey=UseExistingSecurityGroup,ParameterValue=\"$USE_EXISTING_SG\""
-        "ParameterKey=ExistingSecurityGroupId,ParameterValue=\"$EXISTING_SECURITY_GROUP_ID\""
         "ParameterKey=PublicRpcAccess,ParameterValue=\"$PUBLIC_RPC_ACCESS\""
         "ParameterKey=InstanceType,ParameterValue=\"$AWS_INSTANCE_TYPE\""
         "ParameterKey=RootVolumeSize,ParameterValue=\"$ROOT_VOLUME_SIZE\""
@@ -344,6 +343,14 @@ else
         "ParameterKey=EnableSnapshots,ParameterValue=\"$ENABLE_SNAPSHOTS\""
         "ParameterKey=BitcoinSnapshotPath,ParameterValue=\"$BITCOIN_SNAPSHOT_PATH\""
     )
+    
+    # Only add existing security group parameter if we're using an existing SG
+    if [ "$USE_EXISTING_SG" = "true" ]; then
+        ALL_PARAMETERS+=("ParameterKey=ExistingSecurityGroupId,ParameterValue=\"$EXISTING_SECURITY_GROUP_ID\"")
+    else
+        # Use a default SG when not using existing SG (to satisfy CloudFormation validation)
+        ALL_PARAMETERS+=("ParameterKey=ExistingSecurityGroupId,ParameterValue=\"sg-12345678abcdef012\"")
+    fi
     
     # Counterparty-only parameters for update-counterparty-only mode
     COUNTERPARTY_PARAMETERS=(
