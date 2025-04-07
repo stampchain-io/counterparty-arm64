@@ -34,7 +34,7 @@ services:
     environment:
       - DB_CACHE=6000
       - BLOCKSONLY=1  # Enable for faster initial sync (check-sync-status.sh will auto-disable when sync is complete)
-      - MAXCONNECTIONS=25
+      - MAXCONNECTIONS=50  # Increase connections for faster sync
       - MAXMEMPOOL=300
       - PARALLEL_BLOCKS=8
       - ASSUMEVALID=000000000000000000053b17c1c2e1ea8a965a6240ede8ffd0729f7f2e77283e
@@ -87,7 +87,7 @@ services:
     environment:
       - DB_CACHE=6000
       - BLOCKSONLY=1  # Enable for faster initial sync (check-sync-status.sh will auto-disable when sync is complete)
-      - MAXCONNECTIONS=25
+      - MAXCONNECTIONS=50  # Increase connections for faster sync
       - MAXMEMPOOL=300
       - PARALLEL_BLOCKS=8
       - ASSUMEVALID=00000000000000790c04a99c018cd0a95afdec979cc49f50b45e82573da13848
@@ -141,7 +141,7 @@ services:
     environment:
       - DB_CACHE=6000
       - BLOCKSONLY=1  # Enable for faster initial sync (check-sync-status.sh will auto-disable when sync is complete)
-      - MAXCONNECTIONS=25
+      - MAXCONNECTIONS=50  # Increase connections for faster sync
       - MAXMEMPOOL=300
       - PARALLEL_BLOCKS=8
       - ASSUMEVALID=0000000000004ae2f3896ca8ecd41c460a35bf6257eda9468eb8b3dfc65e9b7b

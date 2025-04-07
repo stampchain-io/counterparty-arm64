@@ -214,6 +214,16 @@ DISK_USAGE=$(docker exec $BITCOIN_CONTAINER du -sh /bitcoin/.bitcoin 2>/dev/null
 NETWORK_INFO=$(docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getnetworkinfo 2>/dev/null)
 CONNECTIONS=$(echo "$NETWORK_INFO" | jq -r '.connections' 2>/dev/null || echo "N/A")
 
+# Add some bootstrap nodes if connections are low
+if [ "$CONNECTIONS" != "N/A" ] && [ "$CONNECTIONS" -lt 5 ]; then
+    log_info "Low peer connections detected ($CONNECTIONS). Adding seed nodes..."
+    docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf addnode "seed.bitcoin.sipa.be" "add" &>/dev/null
+    docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf addnode "dnsseed.bluematt.me" "add" &>/dev/null
+    docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf addnode "seed.bitcoin.wiz.pl" "add" &>/dev/null
+    docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf addnode "seed.bitcoinstats.com" "add" &>/dev/null
+    log_info "Added seed nodes to increase connection count."
+fi
+
 # Get mempool info for transaction processing capacity
 MEMPOOL_INFO=$(docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getmempoolinfo 2>/dev/null)
 MEMPOOL_SIZE=$(echo "$MEMPOOL_INFO" | jq -r '.size' 2>/dev/null || echo "N/A")
@@ -313,6 +323,7 @@ fi
 # Check connections
 if [ "$CONNECTIONS" != "N/A" ] && [ $CONNECTIONS -lt 8 ]; then
     log_warning "  Low peer connections ($CONNECTIONS). More connections may improve sync speed."
+    log_info "  Consider adding connection nodes with: docker exec $BITCOIN_CONTAINER bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf addnode \"seed.bitcoin.sipa.be\" \"add\""
 fi
 
 # Check if sync is stalled

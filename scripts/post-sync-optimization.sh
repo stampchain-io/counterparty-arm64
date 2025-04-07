@@ -80,7 +80,7 @@ prune=0
 # Performance Optimizations for Running Node
 dbcache=2000
 maxmempool=300
-maxconnections=50
+maxconnections=25
 blocksonly=0
 mempoolfullrbf=1
 par=4
