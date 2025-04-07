@@ -123,18 +123,119 @@ chmod -R 755 /bitcoin-data
 if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
   echo "[INFO] Bitcoin blockchain snapshot provided: $BITCOIN_SNAPSHOT_PATH"
   
-  # Check if blockchain data already exists
-  if [ -d "$COUNTERPARTY_DOCKER_DATA/bitcoin/blocks" ] && [ -f "$COUNTERPARTY_DOCKER_DATA/bitcoin/blocks/blk00000.dat" ]; then
-    echo "[INFO] Bitcoin blockchain data already exists, skipping snapshot extraction"
+  # Extract the snapshot height from the filename if it contains a height indicator
+  # Format expected: bitcoin-data-YYYYMMDD-HHMM-HEIGHT.tar.gz where HEIGHT is the block height
+  SNAPSHOT_HEIGHT=0
+  SNAPSHOT_FILENAME=$(basename "$BITCOIN_SNAPSHOT_PATH")
+  if [[ $SNAPSHOT_FILENAME =~ -([0-9]+)\.tar\.gz$ ]]; then
+    SNAPSHOT_HEIGHT="${BASH_REMATCH[1]}"
+    echo "[INFO] Detected snapshot block height: $SNAPSHOT_HEIGHT"
   else
-    echo "[INFO] Downloading and extracting blockchain snapshot..."
+    # Try to get metadata from S3 if available (only for S3 URLs)
+    if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+      SNAPSHOT_HEIGHT=$(aws s3api head-object --bucket $(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3) --key $(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-) --query 'Metadata.blockHeight' --output text 2>/dev/null)
+    else
+      # For HTTPS URLs, try to extract height from the URL
+      if [[ "$BITCOIN_SNAPSHOT_PATH" =~ blockchain-snapshots/([^/]+) ]]; then
+        FILENAME="${BASH_REMATCH[1]}"
+        if [[ $FILENAME =~ -([0-9]+)\.tar\.gz$ ]]; then
+          SNAPSHOT_HEIGHT="${BASH_REMATCH[1]}"
+          echo "[INFO] Extracted height from HTTPS URL: $SNAPSHOT_HEIGHT"
+        fi
+      fi
+    fi
+    if [[ "$SNAPSHOT_HEIGHT" != "None" && -n "$SNAPSHOT_HEIGHT" ]]; then
+      echo "[INFO] Found snapshot block height in metadata: $SNAPSHOT_HEIGHT"
+    else
+      # Default to a high number to encourage using the snapshot for new deployments
+      SNAPSHOT_HEIGHT=800000
+      echo "[INFO] Snapshot height not found, using default value: $SNAPSHOT_HEIGHT"
+    fi
+  fi
+  
+  # Check if blockchain data already exists
+  EXISTING_DATA=false
+  CURRENT_HEIGHT=0
+  
+  if [ -d "/bitcoin-data/bitcoin/blocks" ] && [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ]; then
+    EXISTING_DATA=true
+    echo "[INFO] Existing Bitcoin blockchain data detected"
     
-    # Create temporary directory
-    TEMP_DIR=$(mktemp -d)
+    # Check if bitcoind is running to get current height
+    if docker ps | grep -q bitcoind; then
+      echo "[INFO] Bitcoin daemon running, checking current block height..."
+      # Wait a moment for bitcoind to be responsive
+      sleep 5
+      # Try up to 3 times to get block count
+      for i in {1..3}; do
+        CURRENT_HEIGHT=$(docker exec $(docker ps -q -f name=bitcoind) bitcoin-cli -datadir=/bitcoin/.bitcoin getblockcount 2>/dev/null || echo "0")
+        if [ "$CURRENT_HEIGHT" != "0" ]; then
+          break
+        fi
+        sleep 5
+      done
+      
+      # If we failed to get height, try with config file
+      if [ "$CURRENT_HEIGHT" = "0" ]; then
+        CURRENT_HEIGHT=$(docker exec $(docker ps -q -f name=bitcoind) bitcoin-cli -conf=/bitcoin/.bitcoin/bitcoin.conf getblockcount 2>/dev/null || echo "0")
+      fi
+      
+      echo "[INFO] Current blockchain height: $CURRENT_HEIGHT"
+    else
+      echo "[INFO] Bitcoin daemon not running, checking for checkpoint file..."
+      # Try to get height from our last recorded checkpoint if available
+      if [ -f "/bitcoin-data/bitcoin/.bitcoin/height.txt" ]; then
+        CURRENT_HEIGHT=$(cat "/bitcoin-data/bitcoin/.bitcoin/height.txt")
+        echo "[INFO] Found checkpoint height: $CURRENT_HEIGHT"
+      else
+        echo "[WARNING] Cannot determine current blockchain height - assuming far behind"
+        CURRENT_HEIGHT=0
+      fi
+    fi
     
-    # Configure AWS CLI for faster downloads
-    mkdir -p /home/ubuntu/.aws
-    cat > /home/ubuntu/.aws/config << 'EOF'
+    # Calculate how far behind current blockchain is compared to the snapshot
+    BLOCKS_BEHIND=$((SNAPSHOT_HEIGHT - CURRENT_HEIGHT))
+    
+    if [ $BLOCKS_BEHIND -le 0 ]; then
+      echo "[INFO] Current blockchain height ($CURRENT_HEIGHT) is ahead of snapshot ($SNAPSHOT_HEIGHT), skipping snapshot extraction"
+      # Record current height for future reference
+      echo "$CURRENT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
+      return 0
+    elif [ $BLOCKS_BEHIND -lt 10000 ]; then
+      echo "[INFO] Current blockchain height ($CURRENT_HEIGHT) is only $BLOCKS_BEHIND blocks behind snapshot ($SNAPSHOT_HEIGHT), continuing with current data"
+      return 0
+    else
+      echo "[INFO] Current blockchain height ($CURRENT_HEIGHT) is $BLOCKS_BEHIND blocks behind snapshot ($SNAPSHOT_HEIGHT)"
+      echo "[INFO] Will replace current blockchain data with snapshot data"
+      
+      # Stop bitcoind if running to prevent data corruption
+      if docker ps | grep -q bitcoind; then
+        echo "[INFO] Stopping Bitcoin services to safely replace data..."
+        docker-compose -f /home/ubuntu/counterparty-node/docker-compose.yml down
+        sleep 10
+      fi
+      
+      # Backup existing data
+      BACKUP_DIR="/bitcoin-data/bitcoin.bak-$(date +%Y%m%d-%H%M%S)"
+      echo "[INFO] Backing up existing blockchain data to $BACKUP_DIR"
+      mkdir -p "$BACKUP_DIR"
+      mv /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate "$BACKUP_DIR/" || {
+        echo "[ERROR] Failed to back up existing data, aborting snapshot extraction"
+        return 1
+      }
+    fi
+  else
+    echo "[INFO] No existing Bitcoin blockchain data found"
+  fi
+  
+  echo "[INFO] Downloading and extracting blockchain snapshot..."
+  
+  # Create temporary directory
+  TEMP_DIR=$(mktemp -d)
+  
+  # Configure AWS CLI for faster downloads
+  mkdir -p /home/ubuntu/.aws
+  cat > /home/ubuntu/.aws/config << 'EOF'
 [default]
 s3 =
     max_concurrent_requests = 100
@@ -142,36 +243,74 @@ s3 =
     multipart_threshold = 64MB
     multipart_chunksize = 64MB
 EOF
-    chown -R ubuntu:ubuntu /home/ubuntu/.aws
-    
-    # Download snapshot (with progress reporting)
-    echo "[INFO] Downloading snapshot from $BITCOIN_SNAPSHOT_PATH (this may take some time)..."
+  chown -R ubuntu:ubuntu /home/ubuntu/.aws
+  
+  # Download snapshot (with progress reporting)
+  echo "[INFO] Downloading snapshot from $BITCOIN_SNAPSHOT_PATH (this may take some time)..."
+  
+  # Check if this is an S3 URL or HTTPS URL
+  if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+    # Using S3 protocol
+    echo "[INFO] Using AWS S3 protocol for download"
     aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --expected-size $(aws s3 ls "$BITCOIN_SNAPSHOT_PATH" --summarize | grep Size | awk '{print $3}')
+  elif [[ "$BITCOIN_SNAPSHOT_PATH" == http://* || "$BITCOIN_SNAPSHOT_PATH" == https://* ]]; then
+    # Using HTTP/HTTPS protocol
+    echo "[INFO] Using HTTPS protocol for download"
+    curl -o "$TEMP_DIR/bitcoin-data.tar.gz" -L "$BITCOIN_SNAPSHOT_PATH"
+  else
+    # Invalid URL format
+    echo "[ERROR] Invalid snapshot URL format: $BITCOIN_SNAPSHOT_PATH"
+    echo "[ERROR] URL must begin with 's3://' or 'https://'"
+    exit 1
+  fi
+  
+  if [ $? -ne 0 ]; then
+    echo "[ERROR] Failed to download snapshot from $BITCOIN_SNAPSHOT_PATH"
     
-    if [ $? -ne 0 ]; then
-      echo "[ERROR] Failed to download snapshot from $BITCOIN_SNAPSHOT_PATH"
-      echo "[INFO] Continuing without snapshot..."
-    else
-      echo "[INFO] Snapshot downloaded successfully. Extracting..."
-      
-      # Extract snapshot to correct location
-      mkdir -p "$COUNTERPARTY_DOCKER_DATA/bitcoin"
-      tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C "$COUNTERPARTY_DOCKER_DATA/bitcoin"
-      
-      # Set proper permissions
-      chown -R ubuntu:ubuntu "$COUNTERPARTY_DOCKER_DATA/bitcoin"
-      
-      # Validate extraction
-      if [ -f "$COUNTERPARTY_DOCKER_DATA/bitcoin/blocks/blk00000.dat" ] && [ -d "$COUNTERPARTY_DOCKER_DATA/bitcoin/chainstate" ]; then
-        echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully"
-      else
-        echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
-      fi
+    # If we backed up and moved original data, restore it
+    if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
+      echo "[INFO] Restoring original blockchain data from backup..."
+      mkdir -p /bitcoin-data/bitcoin/
+      mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
     fi
     
-    # Clean up
-    rm -rf "$TEMP_DIR"
+    echo "[INFO] Continuing with existing data or from scratch..."
+  else
+    echo "[INFO] Snapshot downloaded successfully. Extracting..."
+    
+    # Extract snapshot to correct location
+    mkdir -p /bitcoin-data/bitcoin
+    tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C /bitcoin-data/bitcoin
+    
+    # Set proper permissions
+    chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
+    
+    # Store snapshot height for future reference
+    echo "$SNAPSHOT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
+    
+    # Validate extraction
+    if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
+      echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT)"
+      
+      # Remove backup if extraction was successful
+      if [ -d "$BACKUP_DIR" ]; then
+        echo "[INFO] Removing backup as snapshot was successfully extracted"
+        rm -rf "$BACKUP_DIR"
+      fi
+    else
+      echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
+      
+      # Restore backup if available
+      if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
+        echo "[INFO] Restoring original blockchain data from backup..."
+        rm -rf /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate
+        mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
+      fi
+    fi
   fi
+  
+  # Clean up
+  rm -rf "$TEMP_DIR"
 fi
 
 # Configure Docker to use the volume

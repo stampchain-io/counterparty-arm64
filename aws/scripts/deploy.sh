@@ -409,6 +409,7 @@ else
             print "            mkdir -p /tmp/setup";
             print "            curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh";
             print "            chmod +x /tmp/setup/bootstrap.sh";
+            print "            export BITCOIN_SNAPSHOT_PATH=${BitcoinSnapshotPath}";
             print "            /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken}";
             in_user_data = 0;
             next;
@@ -456,6 +457,7 @@ else
             print "            mkdir -p /tmp/setup";
             print "            curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh";
             print "            chmod +x /tmp/setup/bootstrap.sh";
+            print "            export BITCOIN_SNAPSHOT_PATH=${BitcoinSnapshotPath}";
             print "            /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken}";
             in_user_data = 0;
             next;
