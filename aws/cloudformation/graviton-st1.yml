@@ -502,14 +502,20 @@ Resources:
           # Compressed UserData script - download and run bootstrap.sh from GitHub
           apt-get update && apt-get install -y curl
           mkdir -p /tmp/setup
-          curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh
+          
+          # Use stampchain-io main repo branch URL (commit hash added for versioning)
+          curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/49dd2bf/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh
           chmod +x /tmp/setup/bootstrap.sh
+          
+          # Enable debug logging for download process
+          mkdir -p /tmp/download_logs
           
           # Export the snapshot path if provided
           export BITCOIN_SNAPSHOT_PATH="${BitcoinSnapshotPath}"
+          export SNAPSHOT_DEBUG_MODE="true"
           
           # Run the bootstrap script
-          /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken}
+          /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken} 2>&1 | tee -a /tmp/download_logs/bootstrap.log
 
 # CloudWatch alarms removed to reduce costs
 # Custom disk space monitoring is provided by check-disk-usage.sh script

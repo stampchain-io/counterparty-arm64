@@ -265,19 +265,67 @@ EOC
   DOWNLOAD_RETRIES=3
   EXPECTED_SIZE_KB=0
   
+  # Enable extra debugging if requested
+  if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+    echo "[DEBUG] SNAPSHOT_DEBUG_MODE enabled - increasing verbosity"
+    set -x  # Enable command echo
+    # Create debug log directory
+    mkdir -p /tmp/download_logs
+  fi
+  
   # Try to get the expected file size
   if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
     # Get size from S3 metadata
     BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)
     KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)
-    EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text --no-sign-request 2>/dev/null || echo 0)
+    
+    echo "[INFO] Getting metadata for S3 object: s3://$BUCKET/$KEY"
+    S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text --no-sign-request"
+    
+    # Log the command in debug mode
+    if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+      echo "[DEBUG] Running S3 metadata command: $S3_METADATA_CMD" >> /tmp/download_logs/s3_debug.log
+    fi
+    
+    EXPECTED_SIZE_BYTES=$(eval "$S3_METADATA_CMD" 2>/tmp/download_logs/s3_error.log || echo 0)
+    S3_METADATA_RESULT=$?
+    
+    if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+      echo "[DEBUG] S3 metadata command result: $S3_METADATA_RESULT" >> /tmp/download_logs/s3_debug.log
+      echo "[DEBUG] S3 metadata command output: $EXPECTED_SIZE_BYTES" >> /tmp/download_logs/s3_debug.log
+      if [ -f /tmp/download_logs/s3_error.log ]; then
+        echo "[DEBUG] S3 metadata error output:" >> /tmp/download_logs/s3_debug.log
+        cat /tmp/download_logs/s3_error.log >> /tmp/download_logs/s3_debug.log
+      fi
+    fi
+    
     EXPECTED_SIZE_KB=$((EXPECTED_SIZE_BYTES / 1024))
   elif [[ "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* && "$BITCOIN_SNAPSHOT_PATH" == *s3* ]]; then
     # Extract bucket and key from URL 
     S3_URL=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^/]+).s3.amazonaws.com/(.+)|s3://\1/\2|' | sed -E 's|https?://s3.amazonaws.com/([^/]+)/(.+)|s3://\1/\2|')
     BUCKET=$(echo "$S3_URL" | cut -d'/' -f3)
     KEY=$(echo "$S3_URL" | cut -d'/' -f4-)
-    EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text --no-sign-request 2>/dev/null || echo 0)
+    
+    echo "[INFO] Getting metadata for S3 object (from HTTP URL): s3://$BUCKET/$KEY"
+    S3_METADATA_CMD="aws s3api head-object --bucket \"$BUCKET\" --key \"$KEY\" --query ContentLength --output text --no-sign-request"
+    
+    # Log the command in debug mode
+    if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+      echo "[DEBUG] Running S3 metadata command: $S3_METADATA_CMD" >> /tmp/download_logs/s3_debug.log
+    fi
+    
+    EXPECTED_SIZE_BYTES=$(eval "$S3_METADATA_CMD" 2>/tmp/download_logs/s3_error.log || echo 0)
+    S3_METADATA_RESULT=$?
+    
+    if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+      echo "[DEBUG] S3 metadata command result: $S3_METADATA_RESULT" >> /tmp/download_logs/s3_debug.log
+      echo "[DEBUG] S3 metadata command output: $EXPECTED_SIZE_BYTES" >> /tmp/download_logs/s3_debug.log
+      if [ -f /tmp/download_logs/s3_error.log ]; then
+        echo "[DEBUG] S3 metadata error output:" >> /tmp/download_logs/s3_debug.log
+        cat /tmp/download_logs/s3_error.log >> /tmp/download_logs/s3_debug.log
+      fi
+    fi
+    
     EXPECTED_SIZE_KB=$((EXPECTED_SIZE_BYTES / 1024))
   fi
   
@@ -296,10 +344,25 @@ EOC
       aws configure set default.s3.multipart_chunksize 64MB
       aws configure set default.s3.max_queue_size 10000
       
+      # Record these settings for debugging
+      if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+        echo "[DEBUG] S3 settings for download:" >> /tmp/download_logs/s3_debug.log
+        aws configure list | grep s3 >> /tmp/download_logs/s3_debug.log
+      fi
+      
       echo "[INFO] Running S3 download with timeout monitoring..."
       # Use timeout to prevent hangs and add progress monitoring
-      timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
-      DOWNLOAD_RESULT=$?
+      S3_DOWNLOAD_CMD="aws s3 cp \"$BITCOIN_SNAPSHOT_PATH\" \"$TEMP_DIR/bitcoin-data.tar.gz\" --no-sign-request"
+      
+      if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+        echo "[DEBUG] Running S3 download command: $S3_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
+        timeout 7200 eval "$S3_DOWNLOAD_CMD" 2>&1 | tee -a /tmp/download_logs/s3_download.log
+        DOWNLOAD_RESULT=${PIPESTATUS[0]}
+        echo "[DEBUG] S3 download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
+      else
+        timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+        DOWNLOAD_RESULT=$?
+      fi
       
     elif [[ "$BITCOIN_SNAPSHOT_PATH" == http://* || "$BITCOIN_SNAPSHOT_PATH" == https://* ]]; then
       # For HTTP URLs that are actually S3 URLs, try to convert and use s3 command
@@ -309,23 +372,52 @@ EOC
         S3_URL=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^/]+).s3.amazonaws.com/(.+)|s3://\1/\2|' | sed -E 's|https?://s3.amazonaws.com/([^/]+)/(.+)|s3://\1/\2|')
         echo "[INFO] Converted HTTP URL to S3 URL: $S3_URL"
         
+        if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+          echo "[DEBUG] Original URL: $BITCOIN_SNAPSHOT_PATH" >> /tmp/download_logs/s3_debug.log
+          echo "[DEBUG] Converted S3 URL: $S3_URL" >> /tmp/download_logs/s3_debug.log
+        fi
+        
         # Configure AWS CLI for optimal S3 download
         aws configure set default.s3.max_concurrent_requests 100
         aws configure set default.s3.multipart_threshold 64MB
         aws configure set default.s3.multipart_chunksize 64MB
         aws configure set default.s3.max_queue_size 10000
         
+        # Record these settings for debugging
+        if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+          echo "[DEBUG] S3 settings for download:" >> /tmp/download_logs/s3_debug.log
+          aws configure list | grep s3 >> /tmp/download_logs/s3_debug.log
+        fi
+        
         echo "[INFO] Running S3 download with timeout monitoring..."
         # Use timeout to prevent hangs
-        timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
-        DOWNLOAD_RESULT=$?
+        S3_DOWNLOAD_CMD="aws s3 cp \"$S3_URL\" \"$TEMP_DIR/bitcoin-data.tar.gz\" --no-sign-request"
+        
+        if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+          echo "[DEBUG] Running S3 download command: $S3_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
+          timeout 7200 eval "$S3_DOWNLOAD_CMD" 2>&1 | tee -a /tmp/download_logs/s3_download.log
+          DOWNLOAD_RESULT=${PIPESTATUS[0]}
+          echo "[DEBUG] S3 download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
+        else
+          timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+          DOWNLOAD_RESULT=$?
+        fi
         
       else
         # Regular HTTP download
         echo "[INFO] Using HTTPS protocol for download"
         # Use wget for more reliable downloads of large files with timeout
-        timeout 7200 wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$BITCOIN_SNAPSHOT_PATH" --progress=dot:giga --tries=3 --timeout=300
-        DOWNLOAD_RESULT=$?
+        HTTP_DOWNLOAD_CMD="wget -O \"$TEMP_DIR/bitcoin-data.tar.gz\" \"$BITCOIN_SNAPSHOT_PATH\" --progress=dot:giga --tries=3 --timeout=300 --continue"
+        
+        if [ "$SNAPSHOT_DEBUG_MODE" = "true" ]; then
+          echo "[DEBUG] Running HTTP download command: $HTTP_DOWNLOAD_CMD" >> /tmp/download_logs/s3_debug.log
+          timeout 7200 eval "$HTTP_DOWNLOAD_CMD" 2>&1 | tee -a /tmp/download_logs/http_download.log
+          DOWNLOAD_RESULT=${PIPESTATUS[0]}
+          echo "[DEBUG] HTTP download command result: $DOWNLOAD_RESULT" >> /tmp/download_logs/s3_debug.log
+        else
+          timeout 7200 wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$BITCOIN_SNAPSHOT_PATH" --progress=dot:giga --tries=3 --timeout=300 --continue
+          DOWNLOAD_RESULT=$?
+        fi
       fi
     else
       # Invalid URL format
