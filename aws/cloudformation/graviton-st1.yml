@@ -425,6 +425,17 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies: 
+        - PolicyName: CounterpartyS3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - 'arn:aws:s3:::bitcoin-blockchain-snapshots'
+                  - 'arn:aws:s3:::bitcoin-blockchain-snapshots/*'
         - !If
           - EnableSnapshotsCondition
           - PolicyName: CounterpartySnapshotPolicy
