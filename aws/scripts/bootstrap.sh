@@ -119,6 +119,61 @@ mkdir -p /bitcoin-data/repo
 chown -R ubuntu:ubuntu /bitcoin-data
 chmod -R 755 /bitcoin-data
 
+# Check if snapshot path is provided
+if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
+  echo "[INFO] Bitcoin blockchain snapshot provided: $BITCOIN_SNAPSHOT_PATH"
+  
+  # Check if blockchain data already exists
+  if [ -d "$COUNTERPARTY_DOCKER_DATA/bitcoin/blocks" ] && [ -f "$COUNTERPARTY_DOCKER_DATA/bitcoin/blocks/blk00000.dat" ]; then
+    echo "[INFO] Bitcoin blockchain data already exists, skipping snapshot extraction"
+  else
+    echo "[INFO] Downloading and extracting blockchain snapshot..."
+    
+    # Create temporary directory
+    TEMP_DIR=$(mktemp -d)
+    
+    # Configure AWS CLI for faster downloads
+    mkdir -p /home/ubuntu/.aws
+    cat > /home/ubuntu/.aws/config << 'EOF'
+[default]
+s3 =
+    max_concurrent_requests = 100
+    max_queue_size = 10000
+    multipart_threshold = 64MB
+    multipart_chunksize = 64MB
+EOF
+    chown -R ubuntu:ubuntu /home/ubuntu/.aws
+    
+    # Download snapshot (with progress reporting)
+    echo "[INFO] Downloading snapshot from $BITCOIN_SNAPSHOT_PATH (this may take some time)..."
+    aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --expected-size $(aws s3 ls "$BITCOIN_SNAPSHOT_PATH" --summarize | grep Size | awk '{print $3}')
+    
+    if [ $? -ne 0 ]; then
+      echo "[ERROR] Failed to download snapshot from $BITCOIN_SNAPSHOT_PATH"
+      echo "[INFO] Continuing without snapshot..."
+    else
+      echo "[INFO] Snapshot downloaded successfully. Extracting..."
+      
+      # Extract snapshot to correct location
+      mkdir -p "$COUNTERPARTY_DOCKER_DATA/bitcoin"
+      tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C "$COUNTERPARTY_DOCKER_DATA/bitcoin"
+      
+      # Set proper permissions
+      chown -R ubuntu:ubuntu "$COUNTERPARTY_DOCKER_DATA/bitcoin"
+      
+      # Validate extraction
+      if [ -f "$COUNTERPARTY_DOCKER_DATA/bitcoin/blocks/blk00000.dat" ] && [ -d "$COUNTERPARTY_DOCKER_DATA/bitcoin/chainstate" ]; then
+        echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully"
+      else
+        echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
+      fi
+    fi
+    
+    # Clean up
+    rm -rf "$TEMP_DIR"
+  fi
+fi
+
 # Configure Docker to use the volume
 mkdir -p /etc/docker
 cat > /etc/docker/daemon.json << 'EOF'

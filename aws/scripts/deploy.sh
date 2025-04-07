@@ -65,6 +65,7 @@ NETWORK_PROFILE=${NETWORK_PROFILE:-"mainnet"}
 ENABLE_SNAPSHOTS=${ENABLE_SNAPSHOTS:-"false"}
 GITHUB_TOKEN=${GITHUB_TOKEN:-""}
 STACK_NAME=${STACK_NAME:-"counterparty-arm64"}
+BITCOIN_SNAPSHOT_PATH=${BITCOIN_SNAPSHOT_PATH:-""}
 
 # Detect the current public IP address if not provided
 if [ -z "$YOUR_IP" ]; then
@@ -148,6 +149,11 @@ while [[ $# -gt 0 ]]; do
         AUTO_CONFIRM=true
         shift
         ;;
+        --bitcoin-snapshot-path)
+        BITCOIN_SNAPSHOT_PATH="$2"
+        shift
+        shift
+        ;;
         --help)
         echo "Usage: deploy.sh [OPTIONS]"
         echo "Options:"
@@ -162,6 +168,7 @@ while [[ $# -gt 0 ]]; do
         echo "  --no-wait                   Skip waiting after stack creation"
         echo "  --update-stack              Update existing stack instead of creating new one"
         echo "  --update-counterparty-only  Update only Counterparty version parameters"
+        echo "  --bitcoin-snapshot-path PATH S3 path to Bitcoin blockchain snapshot"
         echo "  --dry-run                   Validate template without creating resources"
         echo "  --auto-confirm              Skip confirmation prompt"
         echo "  --help                      Show this help message"
@@ -287,7 +294,8 @@ PARAMETERS="ParameterKey=VpcId,ParameterValue=\"$AWS_VPC_ID\" \
   ParameterKey=BitcoinVersion,ParameterValue=\"$BITCOIN_VERSION\" \
   ParameterKey=CounterpartyBranch,ParameterValue=\"$COUNTERPARTY_BRANCH\" \
   ParameterKey=CounterpartyTag,ParameterValue=\"$COUNTERPARTY_TAG\" \
-  ParameterKey=UbuntuVersion,ParameterValue=\"$UBUNTU_VERSION\""
+  ParameterKey=UbuntuVersion,ParameterValue=\"$UBUNTU_VERSION\" \
+  ParameterKey=BitcoinSnapshotPath,ParameterValue=\"$BITCOIN_SNAPSHOT_PATH\""
 
 if [ "$DRY_RUN" = "true" ]; then
     log_info "Performing a dry run (validation only)..."
@@ -334,6 +342,7 @@ else
         "ParameterKey=GitHubToken,ParameterValue=\"$GITHUB_TOKEN\""
         "ParameterKey=NetworkProfile,ParameterValue=\"$NETWORK_PROFILE\""
         "ParameterKey=EnableSnapshots,ParameterValue=\"$ENABLE_SNAPSHOTS\""
+        "ParameterKey=BitcoinSnapshotPath,ParameterValue=\"$BITCOIN_SNAPSHOT_PATH\""
     )
     
     # Counterparty-only parameters for update-counterparty-only mode

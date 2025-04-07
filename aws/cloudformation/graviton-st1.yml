@@ -110,6 +110,11 @@ Parameters:
     Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
     Type: AWS::EC2::KeyPair::KeyName
     ConstraintDescription: Must be the name of an existing EC2 KeyPair.
+    
+  BitcoinSnapshotPath:
+    Type: String
+    Description: "S3 path to Bitcoin blockchain snapshot (s3://bucket/prefix/file.tar.gz)"
+    Default: ""
 
   CreateNewKeyPair:
     Description: Create a new key pair for this instance? (Not yet implemented, available in AWS Console)
@@ -476,7 +481,7 @@ Resources:
             VolumeSize: !Ref RootVolumeSize
             VolumeType: gp3
             DeleteOnTermination: true
-      Monitoring: true  # Enable detailed CloudWatch monitoring
+      Monitoring: false  # Disable detailed CloudWatch monitoring to reduce costs
       Tags:
         - Key: Name
           Value: counterparty-arm64
@@ -488,29 +493,15 @@ Resources:
           mkdir -p /tmp/setup
           curl -s https://raw.githubusercontent.com/stampchain-io/counterparty-arm64/main/aws/scripts/bootstrap.sh > /tmp/setup/bootstrap.sh
           chmod +x /tmp/setup/bootstrap.sh
+          
+          # Export the snapshot path if provided
+          export BITCOIN_SNAPSHOT_PATH="${BitcoinSnapshotPath}"
+          
+          # Run the bootstrap script
           /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken}
 
-# CloudWatch alarms for monitoring
-  DataVolumeDiskSpaceAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmDescription: "Alert when ST1 volume usage exceeds 80%"
-      MetricName: DiskSpaceUtilization
-      Namespace: System/Linux
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 3
-      Threshold: 80
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: InstanceId
-          Value: !Ref CounterpartyInstance
-        - Name: MountPath
-          Value: /bitcoin-data
-        - Name: Filesystem
-          Value: /dev/nvme1n1
-      AlarmActions:
-        - !Ref AWS::NoValue  # Replace with actual SNS topic ARN if available
+# CloudWatch alarms removed to reduce costs
+# Custom disk space monitoring is provided by check-disk-usage.sh script
 
 Outputs:
   InstanceId:

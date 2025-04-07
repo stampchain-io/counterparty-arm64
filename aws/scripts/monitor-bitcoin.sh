@@ -120,16 +120,18 @@ fi
 
 # Set up automatic monitoring using a cron job
 setup_monitoring_cron() {
-    local cron_cmd="*/10 * * * * $SCRIPT_DIR/monitor-bitcoin.sh --host $HOST --port $PORT --user $USER --pass $PASS --log $LOG_FILE"
+    local cron_cmd="0 * * * * $SCRIPT_DIR/monitor-bitcoin.sh --host $HOST --port $PORT --user $USER --pass $PASS --log $LOG_FILE"
     
     if [ "$SEND_ALERTS" = "true" ]; then
         cron_cmd="$cron_cmd --email $ALERT_EMAIL"
     fi
     
-    # Add to crontab if not already there
+    # Add to crontab if not already there - run hourly instead of every 10 minutes to reduce CloudWatch costs
     if ! crontab -l | grep -q "monitor-bitcoin.sh"; then
+        # Change from */10 to 0 to run once per hour
+        cron_cmd=$(echo "$cron_cmd" | sed 's/\*\/10/0/g')
         (crontab -l 2>/dev/null; echo "$cron_cmd") | crontab -
-        log_with_timestamp "Added monitoring to crontab (runs every 10 minutes)"
+        log_with_timestamp "Added monitoring to crontab (runs hourly to optimize CloudWatch costs)"
     fi
 }
 
