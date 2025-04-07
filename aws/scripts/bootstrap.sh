@@ -29,7 +29,7 @@ log_success() {
 # Install basic dependencies 
 log_info "Installing basic dependencies..."
 apt-get update && apt-get upgrade -y
-apt-get install -y apt-transport-https ca-certificates curl software-properties-common git jq htop iotop xfsprogs bc
+apt-get install -y apt-transport-https ca-certificates curl software-properties-common git jq htop iotop xfsprogs bc pv logrotate
 
 # Fix for aws-cli in Ubuntu 24.04
 if ! command -v aws &> /dev/null; then
@@ -261,32 +261,150 @@ EOC
   chown -R ubuntu:ubuntu /home/ubuntu/.aws
   
   # Check if this is an S3 URL or HTTPS URL
+  DOWNLOAD_SUCCESS=false
+  DOWNLOAD_RETRIES=3
+  EXPECTED_SIZE_KB=0
+  
+  # Try to get the expected file size
   if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
-    # Using S3 protocol with optimized settings
-    echo "[INFO] Using optimized AWS S3 protocol for download"
-    aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
-  elif [[ "$BITCOIN_SNAPSHOT_PATH" == http://* || "$BITCOIN_SNAPSHOT_PATH" == https://* ]]; then
-    # For HTTP URLs that are actually S3 URLs, try to convert and use s3 command
-    if [[ "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* && "$BITCOIN_SNAPSHOT_PATH" == *s3* ]]; then
-      # Extract bucket and key from URL
-      # Format: https://<bucket>.s3.amazonaws.com/<key> or https://s3.amazonaws.com/<bucket>/<key>
-      S3_URL=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^/]+).s3.amazonaws.com/(.+)|s3://\1/\2|' | sed -E 's|https?://s3.amazonaws.com/([^/]+)/(.+)|s3://\1/\2|')
-      echo "[INFO] Converted HTTP URL to S3 URL: $S3_URL"
-      aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
-    else
-      # Regular HTTP download
-      echo "[INFO] Using HTTPS protocol for download"
-      # Use wget for more reliable downloads of large files
-      wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$BITCOIN_SNAPSHOT_PATH" --progress=dot:giga
-    fi
-  else
-    # Invalid URL format
-    echo "[ERROR] Invalid snapshot URL format: $BITCOIN_SNAPSHOT_PATH"
-    echo "[ERROR] URL must begin with 's3://' or 'https://'"
-    exit 1
+    # Get size from S3 metadata
+    BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)
+    KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)
+    EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text --no-sign-request 2>/dev/null || echo 0)
+    EXPECTED_SIZE_KB=$((EXPECTED_SIZE_BYTES / 1024))
+  elif [[ "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* && "$BITCOIN_SNAPSHOT_PATH" == *s3* ]]; then
+    # Extract bucket and key from URL 
+    S3_URL=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^/]+).s3.amazonaws.com/(.+)|s3://\1/\2|' | sed -E 's|https?://s3.amazonaws.com/([^/]+)/(.+)|s3://\1/\2|')
+    BUCKET=$(echo "$S3_URL" | cut -d'/' -f3)
+    KEY=$(echo "$S3_URL" | cut -d'/' -f4-)
+    EXPECTED_SIZE_BYTES=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query ContentLength --output text --no-sign-request 2>/dev/null || echo 0)
+    EXPECTED_SIZE_KB=$((EXPECTED_SIZE_BYTES / 1024))
   fi
   
-  if [ $? -ne 0 ]; then
+  echo "[INFO] Expected snapshot file size: $EXPECTED_SIZE_KB KB"
+  
+  # Download with retries
+  for RETRY in $(seq 1 $DOWNLOAD_RETRIES); do
+    echo "[INFO] Download attempt $RETRY of $DOWNLOAD_RETRIES"
+    
+    if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+      # Using S3 protocol with optimized settings
+      echo "[INFO] Using optimized AWS S3 protocol for download"
+      # Set a longer timeout to prevent interruption
+      aws configure set default.s3.max_concurrent_requests 100
+      aws configure set default.s3.multipart_threshold 64MB
+      aws configure set default.s3.multipart_chunksize 64MB
+      aws configure set default.s3.max_queue_size 10000
+      
+      echo "[INFO] Running S3 download with timeout monitoring..."
+      # Use timeout to prevent hangs and add progress monitoring
+      timeout 7200 aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+      DOWNLOAD_RESULT=$?
+      
+    elif [[ "$BITCOIN_SNAPSHOT_PATH" == http://* || "$BITCOIN_SNAPSHOT_PATH" == https://* ]]; then
+      # For HTTP URLs that are actually S3 URLs, try to convert and use s3 command
+      if [[ "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* && "$BITCOIN_SNAPSHOT_PATH" == *s3* ]]; then
+        # Extract bucket and key from URL
+        # Format: https://<bucket>.s3.amazonaws.com/<key> or https://s3.amazonaws.com/<bucket>/<key>
+        S3_URL=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^/]+).s3.amazonaws.com/(.+)|s3://\1/\2|' | sed -E 's|https?://s3.amazonaws.com/([^/]+)/(.+)|s3://\1/\2|')
+        echo "[INFO] Converted HTTP URL to S3 URL: $S3_URL"
+        
+        # Configure AWS CLI for optimal S3 download
+        aws configure set default.s3.max_concurrent_requests 100
+        aws configure set default.s3.multipart_threshold 64MB
+        aws configure set default.s3.multipart_chunksize 64MB
+        aws configure set default.s3.max_queue_size 10000
+        
+        echo "[INFO] Running S3 download with timeout monitoring..."
+        # Use timeout to prevent hangs
+        timeout 7200 aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+        DOWNLOAD_RESULT=$?
+        
+      else
+        # Regular HTTP download
+        echo "[INFO] Using HTTPS protocol for download"
+        # Use wget for more reliable downloads of large files with timeout
+        timeout 7200 wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$BITCOIN_SNAPSHOT_PATH" --progress=dot:giga --tries=3 --timeout=300
+        DOWNLOAD_RESULT=$?
+      fi
+    else
+      # Invalid URL format
+      echo "[ERROR] Invalid snapshot URL format: $BITCOIN_SNAPSHOT_PATH"
+      echo "[ERROR] URL must begin with 's3://' or 'https://'"
+      DOWNLOAD_RESULT=1
+    fi
+    
+    # Check download result
+    if [ $DOWNLOAD_RESULT -ne 0 ]; then
+      echo "[ERROR] Download attempt $RETRY failed with exit code: $DOWNLOAD_RESULT"
+      
+      # If we've reached the maximum retries, give up
+      if [ $RETRY -eq $DOWNLOAD_RETRIES ]; then
+        echo "[ERROR] Failed to download snapshot after $DOWNLOAD_RETRIES attempts"
+        break
+      else
+        echo "[INFO] Retrying download in 30 seconds..."
+        sleep 30
+        
+        # Clear any partial downloads
+        rm -f "$TEMP_DIR/bitcoin-data.tar.gz"
+      fi
+    else
+      # Verify download size if expected size is known
+      if [ $EXPECTED_SIZE_KB -gt 0 ]; then
+        ACTUAL_SIZE_KB=$(du -k "$TEMP_DIR/bitcoin-data.tar.gz" | cut -f1)
+        echo "[INFO] Actual downloaded size: $ACTUAL_SIZE_KB KB"
+        
+        # Allow a small difference (1%) to account for metadata differences
+        SIZE_THRESHOLD=$(( EXPECTED_SIZE_KB * 99 / 100 ))
+        
+        if [ $ACTUAL_SIZE_KB -lt $SIZE_THRESHOLD ]; then
+          echo "[ERROR] Downloaded file size ($ACTUAL_SIZE_KB KB) is significantly smaller than expected ($EXPECTED_SIZE_KB KB)"
+          echo "[ERROR] This indicates an incomplete download. Retrying..."
+          
+          # If we've reached the maximum retries, give up
+          if [ $RETRY -eq $DOWNLOAD_RETRIES ]; then
+            echo "[ERROR] Failed to download complete snapshot after $DOWNLOAD_RETRIES attempts"
+            break
+          else
+            echo "[INFO] Retrying download in 30 seconds..."
+            sleep 30
+            
+            # Clear the partial download
+            rm -f "$TEMP_DIR/bitcoin-data.tar.gz"
+          fi
+        else
+          echo "[SUCCESS] Download size verification passed"
+          DOWNLOAD_SUCCESS=true
+          break
+        fi
+      else
+        # If we can't verify size, check if the file exists and has reasonable size (>1GB)
+        if [ -f "$TEMP_DIR/bitcoin-data.tar.gz" ] && [ $(du -m "$TEMP_DIR/bitcoin-data.tar.gz" | cut -f1) -gt 1024 ]; then
+          echo "[INFO] Download appears successful (size: $(du -h "$TEMP_DIR/bitcoin-data.tar.gz" | cut -f1))"
+          DOWNLOAD_SUCCESS=true
+          break
+        else
+          echo "[ERROR] Downloaded file too small or missing"
+          
+          # If we've reached the maximum retries, give up
+          if [ $RETRY -eq $DOWNLOAD_RETRIES ]; then
+            echo "[ERROR] Failed to download valid snapshot after $DOWNLOAD_RETRIES attempts"
+            break
+          else
+            echo "[INFO] Retrying download in 30 seconds..."
+            sleep 30
+            
+            # Clear the partial download
+            rm -f "$TEMP_DIR/bitcoin-data.tar.gz"
+          fi
+        fi
+      fi
+    fi
+  done
+  
+  # Check if download was successful
+  if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
     echo "[ERROR] Failed to download snapshot from $BITCOIN_SNAPSHOT_PATH"
     
     # If we backed up and moved original data, restore it
@@ -298,35 +416,58 @@ EOC
     
     echo "[INFO] Continuing with existing data or from scratch..."
   else
-    echo "[INFO] Snapshot downloaded successfully. Extracting..."
+    echo "[INFO] Snapshot downloaded successfully. Validating file integrity..."
     
-    # Extract snapshot to correct location
-    mkdir -p /bitcoin-data/bitcoin
-    tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C /bitcoin-data/bitcoin
-    
-    # Set proper permissions
-    chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
-    
-    # Store snapshot height for future reference
-    echo "$SNAPSHOT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
-    
-    # Validate extraction
-    if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
-      echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT)"
+    # Verify file integrity - check that it's a valid tar.gz file
+    if ! tar -tzf "$TEMP_DIR/bitcoin-data.tar.gz" >/dev/null 2>&1; then
+      echo "[ERROR] Downloaded file is not a valid tar.gz archive"
       
-      # Remove backup if extraction was successful
-      if [ -d "$BACKUP_DIR" ]; then
-        echo "[INFO] Removing backup as snapshot was successfully extracted"
-        rm -rf "$BACKUP_DIR"
-      fi
-    else
-      echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
-      
-      # Restore backup if available
+      # If we backed up and moved original data, restore it
       if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
         echo "[INFO] Restoring original blockchain data from backup..."
-        rm -rf /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate
+        mkdir -p /bitcoin-data/bitcoin/
         mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
+      fi
+      
+      echo "[INFO] Continuing with existing data or from scratch..."
+    else
+      echo "[INFO] Snapshot validated successfully. Extracting..."
+    
+      # Extract snapshot to correct location with progress reporting
+      mkdir -p /bitcoin-data/bitcoin
+      
+      # Extract with progress reporting
+      echo "[INFO] Starting extraction process (this may take 15-30 minutes)..."
+      pv "$TEMP_DIR/bitcoin-data.tar.gz" 2>/dev/null | tar -xzf - -C /bitcoin-data/bitcoin || {
+        # If pv is not available, try with regular tar
+        echo "[INFO] Using standard tar extraction..."
+        tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C /bitcoin-data/bitcoin
+      }
+      
+      # Set proper permissions
+      chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
+      
+      # Store snapshot height for future reference
+      echo "$SNAPSHOT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
+      
+      # Validate extraction
+      if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
+        echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT)"
+        
+        # Remove backup if extraction was successful
+        if [ -d "$BACKUP_DIR" ]; then
+          echo "[INFO] Removing backup as snapshot was successfully extracted"
+          rm -rf "$BACKUP_DIR"
+        fi
+      else
+        echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
+        
+        # Restore backup if available
+        if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
+          echo "[INFO] Restoring original blockchain data from backup..."
+          rm -rf /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate
+          mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
+        fi
       fi
     fi
   fi

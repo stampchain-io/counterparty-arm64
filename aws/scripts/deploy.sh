@@ -522,6 +522,14 @@ if aws cloudformation wait $WAIT_COMMAND --stack-name "$STACK_NAME" --region "$A
     
     # For stack creation or complete stack update, wait and check status
     if [ "$OPERATION_TYPE" = "creation" ] || [ "$UPDATE_COUNTERPARTY_ONLY" = false ]; then
+        # Display blockchain download time estimate if a snapshot is being used
+        if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
+            log_warning "IMPORTANT: When using a Bitcoin blockchain snapshot (~472GB), the download and extraction process can take 1-2 hours"
+            log_warning "           This depends on your instance's network bandwidth and storage performance"
+            log_warning "           The instance will automatically configure and start the services after the download completes"
+            log_info "To monitor the download progress: ssh ubuntu@$public_ip 'sudo tail -f /var/log/cloud-init-output.log'"
+        fi
+        
         if [ "$WAIT_TIME" -gt 0 ]; then
             if [ "$WAIT_TIME" -ge 60 ]; then
                 # Calculate minutes and seconds for display
@@ -550,13 +558,26 @@ if aws cloudformation wait $WAIT_COMMAND --stack-name "$STACK_NAME" --region "$A
         log_info "You may need to wait a moment for the Counterparty container to restart with the new version."
         exit 0
     fi
-    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$public_ip "docker ps" 2>/dev/null; then
-        log_success "Services are running! You can now access your Counterparty node."
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 ubuntu@$public_ip "docker ps | grep counterparty" 2>/dev/null; then
+        log_success "Counterparty services are running! You can now access your Counterparty node."
         ssh -o StrictHostKeyChecking=no ubuntu@$public_ip "./check-sync-status.sh"
     else
-        log_warning "Services may still be initializing. You can check the setup progress with:"
-        log_info "  ssh ubuntu@$public_ip 'tail -f /var/log/cloud-init-output.log'"
-        log_info "  ssh ubuntu@$public_ip 'docker ps'"
+        # Check if there was a blockchain snapshot specified
+        if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
+            log_warning "Blockchain download and setup is still in progress. This can take 1-2 hours for large snapshots (~472GB)."
+            log_info "To check download progress (look for 'Completed X/472.3 GiB'):"
+            log_info "  ssh ubuntu@$public_ip 'sudo tail -f /var/log/cloud-init-output.log'"
+            log_info ""
+            log_info "To check if Docker containers have started:"
+            log_info "  ssh ubuntu@$public_ip 'docker ps'"
+            log_info ""
+            log_info "To verify Bitcoin data extraction (should show blocks and chainstate directories):"
+            log_info "  ssh ubuntu@$public_ip 'ls -la /bitcoin-data/bitcoin/'"
+        else
+            log_warning "Services may still be initializing. You can check the setup progress with:"
+            log_info "  ssh ubuntu@$public_ip 'sudo tail -f /var/log/cloud-init-output.log'"
+            log_info "  ssh ubuntu@$public_ip 'docker ps'"
+        fi
     fi
 else
     log_error "Stack creation failed or timed out. Check the AWS CloudFormation Console for details."
