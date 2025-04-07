@@ -245,18 +245,40 @@ s3 =
 EOF
   chown -R ubuntu:ubuntu /home/ubuntu/.aws
   
-  # Download snapshot (with progress reporting)
+  # Download snapshot with optimized S3 configuration
   echo "[INFO] Downloading snapshot from $BITCOIN_SNAPSHOT_PATH (this may take some time)..."
+  
+  # Configure AWS CLI for optimal S3 download performance
+  mkdir -p /home/ubuntu/.aws
+  cat > /home/ubuntu/.aws/config << 'EOC'
+[default]
+s3 =
+    max_concurrent_requests = 100
+    max_queue_size = 10000
+    multipart_threshold = 64MB
+    multipart_chunksize = 64MB
+EOC
+  chown -R ubuntu:ubuntu /home/ubuntu/.aws
   
   # Check if this is an S3 URL or HTTPS URL
   if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
-    # Using S3 protocol
-    echo "[INFO] Using AWS S3 protocol for download"
-    aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --expected-size $(aws s3 ls "$BITCOIN_SNAPSHOT_PATH" --summarize | grep Size | awk '{print $3}')
+    # Using S3 protocol with optimized settings
+    echo "[INFO] Using optimized AWS S3 protocol for download"
+    aws s3 cp "$BITCOIN_SNAPSHOT_PATH" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
   elif [[ "$BITCOIN_SNAPSHOT_PATH" == http://* || "$BITCOIN_SNAPSHOT_PATH" == https://* ]]; then
-    # Using HTTP/HTTPS protocol
-    echo "[INFO] Using HTTPS protocol for download"
-    curl -o "$TEMP_DIR/bitcoin-data.tar.gz" -L "$BITCOIN_SNAPSHOT_PATH"
+    # For HTTP URLs that are actually S3 URLs, try to convert and use s3 command
+    if [[ "$BITCOIN_SNAPSHOT_PATH" == *amazonaws.com* && "$BITCOIN_SNAPSHOT_PATH" == *s3* ]]; then
+      # Extract bucket and key from URL
+      # Format: https://<bucket>.s3.amazonaws.com/<key> or https://s3.amazonaws.com/<bucket>/<key>
+      S3_URL=$(echo "$BITCOIN_SNAPSHOT_PATH" | sed -E 's|https?://([^/]+).s3.amazonaws.com/(.+)|s3://\1/\2|' | sed -E 's|https?://s3.amazonaws.com/([^/]+)/(.+)|s3://\1/\2|')
+      echo "[INFO] Converted HTTP URL to S3 URL: $S3_URL"
+      aws s3 cp "$S3_URL" "$TEMP_DIR/bitcoin-data.tar.gz" --no-sign-request
+    else
+      # Regular HTTP download
+      echo "[INFO] Using HTTPS protocol for download"
+      # Use wget for more reliable downloads of large files
+      wget -O "$TEMP_DIR/bitcoin-data.tar.gz" "$BITCOIN_SNAPSHOT_PATH" --progress=dot:giga
+    fi
   else
     # Invalid URL format
     echo "[ERROR] Invalid snapshot URL format: $BITCOIN_SNAPSHOT_PATH"
