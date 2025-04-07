@@ -558,6 +558,8 @@ EOC
           DOWNLOAD_RESULT=$?
         fi
         
+        # Additional MD5 checksum verification will be handled in the common code after the download
+        
       else
         # Regular HTTP download
         echo "[INFO] Using HTTPS protocol for download"
@@ -623,8 +625,55 @@ EOC
           fi
         else
           echo "[SUCCESS] Download size verification passed"
-          DOWNLOAD_SUCCESS=true
-          break
+          
+          # Check MD5 checksum if it's available in S3 metadata
+          if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+            BUCKET=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)
+            KEY=$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)
+            
+            echo "[INFO] Retrieving MD5 checksum from S3 metadata..."
+            if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+              EXPECTED_MD5=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query "Metadata.md5" --output text 2>/dev/null)
+            else
+              EXPECTED_MD5=$(aws s3api head-object --bucket "$BUCKET" --key "$KEY" --query "Metadata.md5" --output text --no-sign-request 2>/dev/null)
+            fi
+            
+            if [ -n "$EXPECTED_MD5" ] && [ "$EXPECTED_MD5" != "None" ]; then
+              echo "[INFO] Found MD5 checksum in metadata: $EXPECTED_MD5"
+              echo "[INFO] Calculating MD5 checksum of downloaded file (this may take a few minutes)..."
+              ACTUAL_MD5=$(md5sum "$TEMP_DIR/bitcoin-data.tar.gz" | cut -d' ' -f1)
+              echo "[INFO] Calculated MD5 checksum: $ACTUAL_MD5"
+              
+              if [ "$EXPECTED_MD5" = "$ACTUAL_MD5" ]; then
+                echo "[SUCCESS] MD5 checksum verification passed"
+                DOWNLOAD_SUCCESS=true
+                break
+              else
+                echo "[ERROR] MD5 checksum verification failed. Expected: $EXPECTED_MD5, Got: $ACTUAL_MD5"
+                echo "[ERROR] The downloaded file is corrupted. Retrying..."
+                
+                # If we've reached the maximum retries, give up
+                if [ $RETRY -eq $DOWNLOAD_RETRIES ]; then
+                  echo "[ERROR] Failed to download valid snapshot after $DOWNLOAD_RETRIES attempts"
+                  break
+                else
+                  echo "[INFO] Retrying download in 30 seconds..."
+                  sleep 30
+                  
+                  # Clear the partial download
+                  rm -f "$TEMP_DIR/bitcoin-data.tar.gz"
+                fi
+              fi
+            else
+              echo "[INFO] No MD5 checksum found in S3 metadata. Skipping checksum verification."
+              DOWNLOAD_SUCCESS=true
+              break
+            fi
+          else
+            # For non-S3 URLs, we can't easily get the MD5 checksum
+            DOWNLOAD_SUCCESS=true
+            break
+          fi
         fi
       else
         # If we can't verify size, check if the file exists and has reasonable size (>1GB)
