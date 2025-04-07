@@ -734,62 +734,50 @@ EOC
       echo "[INFO] Continuing with existing data or from scratch..."
     fi
   else
-    echo "[INFO] Snapshot downloaded successfully. Validating file integrity..."
+    echo "[INFO] Snapshot downloaded successfully. MD5 checksum validation passed, proceeding with extraction..."
     
-    # Verify file integrity - check that it's a valid tar.gz file
-    if ! tar -tzf "$TEMP_DIR/bitcoin-data.tar.gz" >/dev/null 2>&1; then
-      echo "[ERROR] Downloaded file is not a valid tar.gz archive"
+    # We skip the tar validation since we've already verified the MD5 checksum
+    # This avoids the long-running tar -t verification that can take hours with large files
+    echo "[INFO] Skipping tar validation since MD5 checksum verification already passed..."
+    
+    # Extract snapshot to correct location with progress reporting
+    mkdir -p /bitcoin-data/bitcoin
+    
+    # Extract with progress reporting
+    echo "[INFO] Starting extraction process (this may take 15-30 minutes)..."
+    pv "$TEMP_DIR/bitcoin-data.tar.gz" 2>/dev/null | tar -xzf - -C /bitcoin-data/bitcoin || {
+      # If pv is not available, try with regular tar
+      echo "[INFO] Using standard tar extraction..."
+      tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C /bitcoin-data/bitcoin
+    }
+    
+    # Set proper permissions
+    chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
+    
+    # Store snapshot height for future reference
+    echo "$SNAPSHOT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
+    
+    # Validate extraction
+    if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
+      # Calculate extracted size for reporting
+      EXTRACTED_SIZE=$(du -sh /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate | awk '{sum+=$1} END {print sum}')
+      DOWNLOAD_SIZE=$(du -h "$TEMP_DIR/bitcoin-data.tar.gz" | cut -f1)
       
-      # If we backed up and moved original data, restore it
+      echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT, downloaded $DOWNLOAD_SIZE, extracted ~$EXTRACTED_SIZE)"
+      
+      # Remove backup if extraction was successful
+      if [ -d "$BACKUP_DIR" ]; then
+        echo "[INFO] Removing backup as snapshot was successfully extracted"
+        rm -rf "$BACKUP_DIR"
+      fi
+    else
+      echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
+      
+      # Restore backup if available
       if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
         echo "[INFO] Restoring original blockchain data from backup..."
-        mkdir -p /bitcoin-data/bitcoin/
+        rm -rf /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate
         mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
-      fi
-      
-      echo "[INFO] Continuing with existing data or from scratch..."
-    else
-      echo "[INFO] Snapshot validated successfully. Extracting..."
-    
-      # Extract snapshot to correct location with progress reporting
-      mkdir -p /bitcoin-data/bitcoin
-      
-      # Extract with progress reporting
-      echo "[INFO] Starting extraction process (this may take 15-30 minutes)..."
-      pv "$TEMP_DIR/bitcoin-data.tar.gz" 2>/dev/null | tar -xzf - -C /bitcoin-data/bitcoin || {
-        # If pv is not available, try with regular tar
-        echo "[INFO] Using standard tar extraction..."
-        tar -xzf "$TEMP_DIR/bitcoin-data.tar.gz" -C /bitcoin-data/bitcoin
-      }
-      
-      # Set proper permissions
-      chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
-      
-      # Store snapshot height for future reference
-      echo "$SNAPSHOT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
-      
-      # Validate extraction
-      if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
-        # Calculate extracted size for reporting
-        EXTRACTED_SIZE=$(du -sh /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate | awk '{sum+=$1} END {print sum}')
-        DOWNLOAD_SIZE=$(du -h "$TEMP_DIR/bitcoin-data.tar.gz" | cut -f1)
-        
-        echo "[SUCCESS] Bitcoin blockchain snapshot extracted successfully (height $SNAPSHOT_HEIGHT, downloaded $DOWNLOAD_SIZE, extracted ~$EXTRACTED_SIZE)"
-        
-        # Remove backup if extraction was successful
-        if [ -d "$BACKUP_DIR" ]; then
-          echo "[INFO] Removing backup as snapshot was successfully extracted"
-          rm -rf "$BACKUP_DIR"
-        fi
-      else
-        echo "[ERROR] Snapshot extraction failed or resulted in incomplete data"
-        
-        # Restore backup if available
-        if [ "$EXISTING_DATA" = true ] && [ -d "$BACKUP_DIR/blocks" ] && [ -d "$BACKUP_DIR/chainstate" ]; then
-          echo "[INFO] Restoring original blockchain data from backup..."
-          rm -rf /bitcoin-data/bitcoin/blocks /bitcoin-data/bitcoin/chainstate
-          mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
-        fi
       fi
     fi
   fi
