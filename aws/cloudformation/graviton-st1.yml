@@ -72,6 +72,7 @@ Metadata:
           default: "Storage and Backup"
         Parameters:
           - EnableSnapshots
+          - BitcoinSnapshotPath
       - Label:
           default: "Network Configuration"
         Parameters:
@@ -80,6 +81,11 @@ Metadata:
           - YourIp
           - UseExistingSecurityGroup
           - ExistingSecurityGroupId
+      - Label:
+          default: "AWS Credentials for S3"
+        Parameters:
+          - AwsAccessKey
+          - AwsSecretKey
       - Label:
           default: "Counterparty Configuration"
         Parameters:
@@ -225,6 +231,18 @@ Parameters:
       
   GitHubToken:
     Description: GitHub personal access token for private repository access (optional)
+    Type: String
+    Default: ""
+    NoEcho: true
+    
+  AwsAccessKey:
+    Description: AWS Access Key for S3 bucket access (optional, for private S3 buckets)
+    Type: String
+    Default: ""
+    NoEcho: true
+    
+  AwsSecretKey:
+    Description: AWS Secret Key for S3 bucket access (optional, for private S3 buckets)
     Type: String
     Default: ""
     NoEcho: true
@@ -514,8 +532,8 @@ Resources:
           export BITCOIN_SNAPSHOT_PATH="${BitcoinSnapshotPath}"
           export SNAPSHOT_DEBUG_MODE="true"
           
-          # Run the bootstrap script
-          /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken} 2>&1 | tee -a /tmp/download_logs/bootstrap.log
+          # Run the bootstrap script with AWS credentials if provided
+          /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken} "${AwsAccessKey}" "${AwsSecretKey}" 2>&1 | tee -a /tmp/download_logs/bootstrap.log
 
 # CloudWatch alarms removed to reduce costs
 # Custom disk space monitoring is provided by check-disk-usage.sh script
