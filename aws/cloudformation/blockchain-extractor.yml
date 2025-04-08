@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Temporary instance for extracting and uploading uncompressed blockchain data'
+
+Parameters:
+  InstanceType:
+    Description: EC2 instance type (should be compute-optimized)
+    Type: String
+    Default: c6g.2xlarge
+    AllowedValues:
+      - c6g.2xlarge
+      - c6g.4xlarge
+      - m6g.2xlarge
+      - m6g.4xlarge
+  
+  KeyName:
+    Description: Name of an existing EC2 KeyPair to enable SSH access
+    Type: AWS::EC2::KeyPair::KeyName
+  
+  VpcId:
+    Description: VPC ID where the instance will be launched
+    Type: AWS::EC2::VPC::Id
+  
+  SubnetId:
+    Description: Subnet ID where the instance will be launched
+    Type: AWS::EC2::Subnet::Id
+  
+  SourceBucket:
+    Description: S3 bucket containing the compressed blockchain
+    Type: String
+    Default: bitcoin-blockchain-snapshots
+  
+  SourceObject:
+    Description: Object key of compressed blockchain in source bucket
+    Type: String
+    Default: bitcoin-data-live-20250406-1347.tar.gz
+  
+  DestBucket:
+    Description: S3 bucket for storing uncompressed blockchain
+    Type: String
+    Default: bitcoin-blockchain-snapshots
+  
+  DestPrefix:
+    Description: Prefix in destination bucket for uncompressed blockchain
+    Type: String
+    Default: uncompressed
+  
+  DiskSizeGB:
+    Description: Size of data disk in GB (should be at least 3x the compressed size)
+    Type: Number
+    Default: 2000
+    MinValue: 1000
+    MaxValue: 4000
+
+Resources:
+  BlockchainExtractorSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for blockchain extractor
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: blockchain-extractor-sg
+
+  BlockchainExtractorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${SourceBucket}'
+                  - !Sub 'arn:aws:s3:::${SourceBucket}/*'
+                  - !Sub 'arn:aws:s3:::${DestBucket}'
+                  - !Sub 'arn:aws:s3:::${DestBucket}/*'
+
+  BlockchainExtractorInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BlockchainExtractorRole
+
+  BlockchainExtractorInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: ami-0836cb0ffc615b773  # Ubuntu 22.04 ARM64
+      KeyName: !Ref KeyName
+      IamInstanceProfile: !Ref BlockchainExtractorInstanceProfile
+      SecurityGroupIds:
+        - !Ref BlockchainExtractorSecurityGroup
+      SubnetId: !Ref SubnetId
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+        - DeviceName: /dev/sdf
+          Ebs:
+            VolumeSize: !Ref DiskSizeGB
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Set up the blockchain extractor
+          
+          # Install dependencies
+          apt-get update && apt-get install -y awscli git
+          
+          # Set up the data volume
+          mkdir -p /blockchain-data
+          mkfs.xfs /dev/nvme1n1
+          mount /dev/nvme1n1 /blockchain-data
+          chown ubuntu:ubuntu /blockchain-data
+          
+          # Clone the repository
+          cd /home/ubuntu
+          git clone https://github.com/stampchain-io/counterparty-arm64.git
+          chown -R ubuntu:ubuntu counterparty-arm64
+          
+          # Create the run script
+          cat > /home/ubuntu/run-extractor.sh << 'EOSCRIPT'
+          #!/bin/bash
+          cd ~/counterparty-arm64
+          ./scripts/prepare-uncompressed-blockchain.sh \
+            --source-bucket "${SourceBucket}" \
+            --source-object "${SourceObject}" \
+            --dest-bucket "${DestBucket}" \
+            --dest-prefix "${DestPrefix}" \
+            --work-dir "/blockchain-data"
+          EOSCRIPT
+          
+          chmod +x /home/ubuntu/run-extractor.sh
+          chown ubuntu:ubuntu /home/ubuntu/run-extractor.sh
+          
+          # Add a cron job to check disk usage
+          echo "*/10 * * * * ubuntu df -h /blockchain-data >> /home/ubuntu/disk-usage.log 2>&1" > /etc/cron.d/disk-check
+          
+          echo "Blockchain extractor setup complete. Run /home/ubuntu/run-extractor.sh to start the extraction process."
+      Tags:
+        - Key: Name
+          Value: blockchain-extractor
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref BlockchainExtractorInstance
+  
+  PublicDns:
+    Description: Public DNS name of the instance
+    Value: !GetAtt BlockchainExtractorInstance.PublicDnsName
+  
+  SSHCommand:
+    Description: Command to SSH into the instance
+    Value: !Sub "ssh ubuntu@${BlockchainExtractorInstance.PublicDnsName}"
+  
+  RunExtractorCommand:
+    Description: Command to run the extractor
+    Value: !Sub "ssh ubuntu@${BlockchainExtractorInstance.PublicDnsName} '~/run-extractor.sh'"
