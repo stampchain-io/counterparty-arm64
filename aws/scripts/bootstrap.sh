@@ -164,6 +164,15 @@ if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
     fi
   fi
   
+  # Determine if this is a compressed archive or uncompressed directory structure
+  IS_UNCOMPRESSED=false
+  if [[ "$BITCOIN_SNAPSHOT_PATH" == */uncompressed/* || "$BITCOIN_SNAPSHOT_PATH" == *"uncompressed" ]]; then
+    IS_UNCOMPRESSED=true
+    echo "[INFO] Using uncompressed blockchain directory structure"
+  else
+    echo "[INFO] Using compressed blockchain archive"
+  fi
+
   # Extract the snapshot height from the filename if it contains a height indicator
   # Format expected: bitcoin-data-YYYYMMDD-HHMM-HEIGHT.tar.gz where HEIGHT is the block height
   SNAPSHOT_HEIGHT=0
@@ -288,8 +297,79 @@ s3 =
 EOF
   chown -R ubuntu:ubuntu /home/ubuntu/.aws
   
-  # Download snapshot with optimized S3 configuration
-  echo "[INFO] Downloading snapshot from $BITCOIN_SNAPSHOT_PATH (this may take some time)..."
+  if [ "$IS_UNCOMPRESSED" = true ]; then
+    echo "[INFO] Using uncompressed blockchain data approach"
+    echo "[INFO] This will directly sync blockchain files from S3 without compression/extraction overhead"
+    echo "[INFO] Beginning sync from $BITCOIN_SNAPSHOT_PATH to /bitcoin-data/bitcoin/"
+    
+    # Create target directory
+    mkdir -p /bitcoin-data/bitcoin
+    
+    # Define the S3 sync command
+    S3_SYNC_CMD="aws s3 sync \"$BITCOIN_SNAPSHOT_PATH\" /bitcoin-data/bitcoin/ --no-sign-request --only-show-errors"
+    
+    # Determine if we should use authentication
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+      echo "[INFO] Using AWS credentials for S3 sync"
+      S3_SYNC_CMD="aws s3 sync \"$BITCOIN_SNAPSHOT_PATH\" /bitcoin-data/bitcoin/"
+    fi
+    
+    # Define log directory
+    DOWNLOAD_LOG_DIR="/bitcoin-data/download_logs"
+    mkdir -p "$DOWNLOAD_LOG_DIR"
+    chmod 777 "$DOWNLOAD_LOG_DIR"
+    
+    # Execute sync command with timeout
+    echo "[INFO] Starting S3 sync operation (this may take some time)..."
+    timeout 7200 $S3_SYNC_CMD 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/s3_sync.log"
+    SYNC_RESULT=$?
+    
+    if [ $SYNC_RESULT -ne 0 ]; then
+      echo "[ERROR] S3 sync failed with exit code: $SYNC_RESULT"
+      
+      # Try again with --no-sign-request as fallback
+      echo "[INFO] Retrying S3 sync with --no-sign-request..."
+      timeout 7200 aws s3 sync "$BITCOIN_SNAPSHOT_PATH" /bitcoin-data/bitcoin/ --no-sign-request --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/s3_sync_retry.log"
+      SYNC_RESULT=$?
+      
+      if [ $SYNC_RESULT -ne 0 ]; then
+        echo "[ERROR] S3 sync failed again with exit code: $SYNC_RESULT"
+        echo "[ERROR] Unable to download blockchain data"
+        return 1
+      fi
+    fi
+    
+    # Success
+    echo "[SUCCESS] Blockchain data synced successfully from S3"
+    
+    # Set proper permissions
+    chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
+    
+    # Store snapshot height for future reference if available
+    if [ -n "$SNAPSHOT_HEIGHT" ]; then
+      mkdir -p "/bitcoin-data/bitcoin/.bitcoin"
+      echo "$SNAPSHOT_HEIGHT" > "/bitcoin-data/bitcoin/.bitcoin/height.txt"
+    fi
+    
+    # Calculate size for reporting
+    BLOCKCHAIN_SIZE=$(du -sh /bitcoin-data/bitcoin | awk '{print $1}')
+    echo "[INFO] Blockchain data size: $BLOCKCHAIN_SIZE"
+    
+    # Validate critical files exist
+    if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
+      echo "[SUCCESS] Blockchain data validation successful"
+    else
+      echo "[WARNING] Blockchain data may be incomplete - missing critical files"
+      echo "[INFO] Available files:"
+      ls -la /bitcoin-data/bitcoin/
+      
+      if [ -d "/bitcoin-data/bitcoin/blocks" ]; then
+        ls -la /bitcoin-data/bitcoin/blocks/ | head -n 10
+      fi
+    fi
+  else
+    # Traditional compressed approach
+    echo "[INFO] Downloading snapshot from $BITCOIN_SNAPSHOT_PATH (this may take some time)..."
   
   # Configure AWS CLI for optimal S3 download performance
   mkdir -p /home/ubuntu/.aws
@@ -812,10 +892,13 @@ EOC
         mv "$BACKUP_DIR/blocks" "$BACKUP_DIR/chainstate" /bitcoin-data/bitcoin/
       fi
     fi
-  fi
+    
+    # Clean up compressed approach temp files
+    rm -f "$TEMP_DIR/bitcoin-data.tar.gz"
+  fi # End of the compressed approach conditional
   
-  # Clean up
-  rm -rf "$TEMP_DIR"
+  # Clean up common temp directory if empty
+  rmdir "$TEMP_DIR" 2>/dev/null || true
 fi
 
 # Configure Docker to use the volume
