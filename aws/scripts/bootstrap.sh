@@ -333,56 +333,96 @@ EOF
       USE_AUTH_FLAG="--no-sign-request"
     fi
     
-    # Sync blocks directory
-    echo "[INFO] Starting blocks directory sync from $BITCOIN_SNAPSHOT_PATH/blocks/ (this may take 1-2 hours)..."
-    timeout 10800 aws s3 sync "$BITCOIN_SNAPSHOT_PATH/blocks/" /bitcoin-data/bitcoin/blocks/ $USE_AUTH_FLAG --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/blocks_sync.log"
-    BLOCKS_SYNC_RESULT=$?
+    # Try to detect if this is a bucket we can list or needs direct access
+    echo "[INFO] Testing bucket access type..."
+    if aws s3 ls "$BITCOIN_SNAPSHOT_PATH/blocks/" $USE_AUTH_FLAG --no-sign-request &>/dev/null; then
+      echo "[INFO] Bucket allows listing - using sync method"
+      BUCKET_ALLOWS_LIST=true
+    else
+      echo "[INFO] Bucket does not allow listing - will use direct object access"
+      BUCKET_ALLOWS_LIST=false
+    fi
     
-    if [ $BLOCKS_SYNC_RESULT -ne 0 ]; then
-      echo "[ERROR] Blocks sync failed with exit code: $BLOCKS_SYNC_RESULT"
-      echo "[WARNING] Attempting direct file downloads as a fallback..."
+    if [ "$BUCKET_ALLOWS_LIST" = "true" ]; then
+      # Standard sync approach for buckets that allow listing
+      echo "[INFO] Starting blocks directory sync from $BITCOIN_SNAPSHOT_PATH/blocks/ (this may take 1-2 hours)..."
+      timeout 10800 aws s3 sync "$BITCOIN_SNAPSHOT_PATH/blocks/" /bitcoin-data/bitcoin/blocks/ $USE_AUTH_FLAG --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/blocks_sync.log"
+      BLOCKS_SYNC_RESULT=$?
       
-      # Fallback to direct file downloads
+      if [ $BLOCKS_SYNC_RESULT -ne 0 ]; then
+        echo "[ERROR] Blocks sync failed with exit code: $BLOCKS_SYNC_RESULT"
+        echo "[WARNING] Bitcoin may still be able to use partial data, continuing..."
+      else
+        echo "[SUCCESS] Blocks data synced successfully from S3"
+      fi
+    else
+      # Direct file access approach for buckets that don't allow listing
+      echo "[INFO] Using direct file download approach for blocks (this may take 1-2 hours)..."
       mkdir -p /bitcoin-data/bitcoin/blocks
-      MAX_BLOCK_FILES=100  # Start with a reasonable number
+      MAX_BLOCK_FILES=8000  # Increased to handle a full blockchain
+      SUCCESSFUL_DOWNLOADS=0
+      FAILED_DOWNLOADS=0
+      MAX_CONSECUTIVE_FAILURES=20  # Stop after this many failures in a row
+      CONSECUTIVE_FAILURES=0
       
       for i in $(seq -f "%05g" 0 $MAX_BLOCK_FILES); do
         echo "[INFO] Trying to download blk${i}.dat..."
         if aws s3 cp "${BITCOIN_SNAPSHOT_PATH}/blocks/blk${i}.dat" "/bitcoin-data/bitcoin/blocks/" $USE_AUTH_FLAG --only-show-errors; then
           echo "[SUCCESS] Downloaded blk${i}.dat"
+          SUCCESSFUL_DOWNLOADS=$((SUCCESSFUL_DOWNLOADS + 1))
+          CONSECUTIVE_FAILURES=0  # Reset consecutive failures counter
           
           # Also try to download corresponding rev file
           if aws s3 cp "${BITCOIN_SNAPSHOT_PATH}/blocks/rev${i}.dat" "/bitcoin-data/bitcoin/blocks/" $USE_AUTH_FLAG --only-show-errors; then
             echo "[SUCCESS] Downloaded rev${i}.dat"
           fi
         else
-          # If we fail to download this file, assume we've reached the end
-          echo "[INFO] No more block files found or access denied at blk${i}.dat"
-          break
+          echo "[WARNING] Failed to download blk${i}.dat"
+          FAILED_DOWNLOADS=$((FAILED_DOWNLOADS + 1))
+          CONSECUTIVE_FAILURES=$((CONSECUTIVE_FAILURES + 1))
+          
+          # If we've had too many consecutive failures, assume we've reached the end
+          if [ $CONSECUTIVE_FAILURES -ge $MAX_CONSECUTIVE_FAILURES ]; then
+            echo "[INFO] $MAX_CONSECUTIVE_FAILURES consecutive files not found, assuming end of chain reached"
+            break
+          fi
+        fi
+        
+        # Report progress periodically
+        if [ $((SUCCESSFUL_DOWNLOADS % 100)) -eq 0 ] && [ $SUCCESSFUL_DOWNLOADS -gt 0 ]; then
+          echo "[INFO] Progress: $SUCCESSFUL_DOWNLOADS block files downloaded so far"
         fi
       done
       
+      echo "[INFO] Download summary: $SUCCESSFUL_DOWNLOADS successful, $FAILED_DOWNLOADS failed"
+      
       # Check if we got at least some block files
       if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ]; then
-        echo "[SUCCESS] Successfully downloaded some block files directly"
+        echo "[SUCCESS] Successfully downloaded blockchain files directly"
       else
-        echo "[WARNING] Failed to download any block files. Bitcoin will sync from the network."
+        echo "[WARNING] Failed to download blockchain files. Bitcoin will sync from the network."
       fi
-    else
-      echo "[SUCCESS] Blocks data synced successfully from S3"
     fi
     
     # Only sync chainstate if this is not a blocks-only bootstrap
     if [ "$IS_BLOCKS_ONLY" != "true" ]; then
-      echo "[INFO] Starting chainstate directory sync from $BITCOIN_SNAPSHOT_PATH/chainstate/ (this may take 1-2 hours)..."
-      timeout 7200 aws s3 sync "$BITCOIN_SNAPSHOT_PATH/chainstate/" /bitcoin-data/bitcoin/chainstate/ $USE_AUTH_FLAG --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/chainstate_sync.log"
-      CHAINSTATE_SYNC_RESULT=$?
-      
-      if [ $CHAINSTATE_SYNC_RESULT -ne 0 ]; then
-        echo "[ERROR] Chainstate sync failed with exit code: $CHAINSTATE_SYNC_RESULT"
-        echo "[WARNING] Bitcoin will need to rebuild the UTXO set from blocks, which will take longer"
+      if [ "$BUCKET_ALLOWS_LIST" = "true" ]; then
+        # Standard sync approach for buckets that allow listing
+        echo "[INFO] Starting chainstate directory sync from $BITCOIN_SNAPSHOT_PATH/chainstate/ (this may take 1-2 hours)..."
+        timeout 7200 aws s3 sync "$BITCOIN_SNAPSHOT_PATH/chainstate/" /bitcoin-data/bitcoin/chainstate/ $USE_AUTH_FLAG --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/chainstate_sync.log"
+        CHAINSTATE_SYNC_RESULT=$?
+        
+        if [ $CHAINSTATE_SYNC_RESULT -ne 0 ]; then
+          echo "[ERROR] Chainstate sync failed with exit code: $CHAINSTATE_SYNC_RESULT"
+          echo "[WARNING] Bitcoin will need to rebuild the UTXO set from blocks, which will take longer"
+        else
+          echo "[SUCCESS] Chainstate data synced successfully from S3"
+        fi
       else
-        echo "[SUCCESS] Chainstate data synced successfully from S3"
+        # For buckets that don't allow listing, chainstate is more complex to download directly
+        # because filenames aren't as predictable as block files
+        echo "[WARNING] Cannot download chainstate directly from buckets that don't allow listing"
+        echo "[INFO] Bitcoin will rebuild the UTXO set from blocks, which will take longer"
       fi
     else
       echo "[INFO] Skipping chainstate sync for blocks-only bootstrap"
