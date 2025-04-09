@@ -166,9 +166,21 @@ if [ -n "$BITCOIN_SNAPSHOT_PATH" ]; then
   
   # Determine if this is a compressed archive or uncompressed directory structure
   IS_UNCOMPRESSED=false
+  IS_BLOCKS_ONLY=false
   if [[ "$BITCOIN_SNAPSHOT_PATH" == */uncompressed/* || "$BITCOIN_SNAPSHOT_PATH" == *"uncompressed" ]]; then
     IS_UNCOMPRESSED=true
     echo "[INFO] Using uncompressed blockchain directory structure"
+    
+    # Check if this is a blocks-only bootstrap
+    BOOTSTRAP_TYPE=$(aws s3 cp "s3://$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)/$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)/bootstrap_type.txt" - --no-sign-request 2>/dev/null || echo "full")
+    
+    if [[ "$BOOTSTRAP_TYPE" == "blocks-only" ]]; then
+      IS_BLOCKS_ONLY=true
+      echo "[INFO] This is a blocks-only bootstrap (chainstate will be rebuilt during sync)"
+      echo "[INFO] Expect a longer initial sync time while the UTXO set is reconstructed"
+    else
+      echo "[INFO] This appears to be a full bootstrap with blocks and chainstate"
+    fi
   else
     echo "[INFO] Using compressed blockchain archive"
   fi
@@ -300,18 +312,11 @@ EOF
   if [ "$IS_UNCOMPRESSED" = true ]; then
     echo "[INFO] Using uncompressed blockchain data approach"
     echo "[INFO] This will directly sync blockchain files from S3 without compression/extraction overhead"
-    echo "[INFO] Beginning sync from $BITCOIN_SNAPSHOT_PATH to /bitcoin-data/bitcoin/"
     
-    # Create target directory
-    mkdir -p /bitcoin-data/bitcoin
-    
-    # Define the S3 sync command
-    S3_SYNC_CMD="aws s3 sync \"$BITCOIN_SNAPSHOT_PATH\" /bitcoin-data/bitcoin/ --no-sign-request --only-show-errors"
-    
-    # Determine if we should use authentication
-    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
-      echo "[INFO] Using AWS credentials for S3 sync"
-      S3_SYNC_CMD="aws s3 sync \"$BITCOIN_SNAPSHOT_PATH\" /bitcoin-data/bitcoin/"
+    # Create target directories
+    mkdir -p /bitcoin-data/bitcoin/blocks
+    if [ "$IS_BLOCKS_ONLY" != "true" ]; then
+      mkdir -p /bitcoin-data/bitcoin/chainstate
     fi
     
     # Define log directory
@@ -319,28 +324,43 @@ EOF
     mkdir -p "$DOWNLOAD_LOG_DIR"
     chmod 777 "$DOWNLOAD_LOG_DIR"
     
-    # Execute sync command with timeout
-    echo "[INFO] Starting S3 sync operation (this may take some time)..."
-    timeout 7200 $S3_SYNC_CMD 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/s3_sync.log"
-    SYNC_RESULT=$?
-    
-    if [ $SYNC_RESULT -ne 0 ]; then
-      echo "[ERROR] S3 sync failed with exit code: $SYNC_RESULT"
-      
-      # Try again with --no-sign-request as fallback
-      echo "[INFO] Retrying S3 sync with --no-sign-request..."
-      timeout 7200 aws s3 sync "$BITCOIN_SNAPSHOT_PATH" /bitcoin-data/bitcoin/ --no-sign-request --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/s3_sync_retry.log"
-      SYNC_RESULT=$?
-      
-      if [ $SYNC_RESULT -ne 0 ]; then
-        echo "[ERROR] S3 sync failed again with exit code: $SYNC_RESULT"
-        echo "[ERROR] Unable to download blockchain data"
-        return 1
-      fi
+    # Determine if we should use authentication
+    USE_AUTH_FLAG=""
+    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+      echo "[INFO] Using AWS credentials for S3 sync"
+    else
+      echo "[INFO] Using anonymous access for S3 sync (--no-sign-request)"
+      USE_AUTH_FLAG="--no-sign-request"
     fi
     
-    # Success
-    echo "[SUCCESS] Blockchain data synced successfully from S3"
+    # Sync blocks directory
+    echo "[INFO] Starting blocks directory sync from $BITCOIN_SNAPSHOT_PATH/blocks/ (this may take 1-2 hours)..."
+    timeout 10800 aws s3 sync "$BITCOIN_SNAPSHOT_PATH/blocks/" /bitcoin-data/bitcoin/blocks/ $USE_AUTH_FLAG --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/blocks_sync.log"
+    BLOCKS_SYNC_RESULT=$?
+    
+    if [ $BLOCKS_SYNC_RESULT -ne 0 ]; then
+      echo "[ERROR] Blocks sync failed with exit code: $BLOCKS_SYNC_RESULT"
+      echo "[WARNING] Bitcoin may still be able to use partial data, continuing..."
+    else
+      echo "[SUCCESS] Blocks data synced successfully from S3"
+    fi
+    
+    # Only sync chainstate if this is not a blocks-only bootstrap
+    if [ "$IS_BLOCKS_ONLY" != "true" ]; then
+      echo "[INFO] Starting chainstate directory sync from $BITCOIN_SNAPSHOT_PATH/chainstate/ (this may take 1-2 hours)..."
+      timeout 7200 aws s3 sync "$BITCOIN_SNAPSHOT_PATH/chainstate/" /bitcoin-data/bitcoin/chainstate/ $USE_AUTH_FLAG --only-show-errors 2>&1 | tee -a "$DOWNLOAD_LOG_DIR/chainstate_sync.log"
+      CHAINSTATE_SYNC_RESULT=$?
+      
+      if [ $CHAINSTATE_SYNC_RESULT -ne 0 ]; then
+        echo "[ERROR] Chainstate sync failed with exit code: $CHAINSTATE_SYNC_RESULT"
+        echo "[WARNING] Bitcoin will need to rebuild the UTXO set from blocks, which will take longer"
+      else
+        echo "[SUCCESS] Chainstate data synced successfully from S3"
+      fi
+    else
+      echo "[INFO] Skipping chainstate sync for blocks-only bootstrap"
+      echo "[INFO] Bitcoin will rebuild the UTXO set during initial sync (this will take longer)"
+    fi
     
     # Set proper permissions
     chown -R ubuntu:ubuntu /bitcoin-data/bitcoin
@@ -356,8 +376,12 @@ EOF
     echo "[INFO] Blockchain data size: $BLOCKCHAIN_SIZE"
     
     # Validate critical files exist
-    if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ] && [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
-      echo "[SUCCESS] Blockchain data validation successful"
+    if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ]; then
+      if [ "$IS_BLOCKS_ONLY" = "true" ] || [ -d "/bitcoin-data/bitcoin/chainstate" ]; then
+        echo "[SUCCESS] Blockchain data validation successful"
+      else
+        echo "[WARNING] Missing chainstate directory - Bitcoin will rebuild it (this will take longer)"
+      fi
     else
       echo "[WARNING] Blockchain data may be incomplete - missing critical files"
       echo "[INFO] Available files:"
@@ -1010,7 +1034,45 @@ su - ubuntu -c "cd counterparty-arm64 && chmod +x scripts/setup.sh && scripts/se
 
 # Create bitcoin.conf file with optimized settings for initial sync
 mkdir -p /bitcoin-data/bitcoin/.bitcoin
-cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
+
+# Use different configurations for blocks-only bootstrap vs full bootstrap
+if [ "$IS_BLOCKS_ONLY" = "true" ]; then
+  # Enhanced config for blocks-only bootstrap (optimized for UTXO set reconstruction)
+  cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
+# Bitcoin Core configuration - Optimized for blocks-only bootstrap (UTXO reconstruction)
+
+# Explicitly set the data directory
+datadir=/bitcoin/.bitcoin
+
+# RPC Settings
+rpcuser=rpc
+rpcpassword=rpc
+rpcallowip=0.0.0.0/0
+rpcbind=0.0.0.0
+server=1
+listen=1
+addresstype=legacy
+txindex=1
+prune=0
+
+# Enhanced Performance for Chainstate Rebuild
+dbcache=8000
+maxmempool=500
+maxconnections=16
+blocksonly=1
+mempoolfullrbf=1
+assumevalid=000000000000000000053b17c1c2e1ea8a965a6240ede8ffd0729f7f2e77283e
+par=16
+
+# ZMQ Settings
+zmqpubrawtx=tcp://0.0.0.0:9332
+zmqpubhashtx=tcp://0.0.0.0:9332
+zmqpubsequence=tcp://0.0.0.0:9332
+zmqpubrawblock=tcp://0.0.0.0:9333
+EOF
+else
+  # Standard config for full bootstrap
+  cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
 # Bitcoin Core configuration file - Created by CloudFormation template with optimizations
 
 # Explicitly set the data directory
@@ -1042,6 +1104,7 @@ zmqpubhashtx=tcp://0.0.0.0:9332
 zmqpubsequence=tcp://0.0.0.0:9332
 zmqpubrawblock=tcp://0.0.0.0:9333
 EOF
+fi
 chmod 600 /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
 chown -R ubuntu:ubuntu /bitcoin-data/bitcoin/.bitcoin
 
