@@ -1035,11 +1035,57 @@ su - ubuntu -c "cd counterparty-arm64 && chmod +x scripts/setup.sh && scripts/se
 # Create bitcoin.conf file with optimized settings for initial sync
 mkdir -p /bitcoin-data/bitcoin/.bitcoin
 
-# Use different configurations for blocks-only bootstrap vs full bootstrap
-if [ "$IS_BLOCKS_ONLY" = "true" ]; then
-  # Enhanced config for blocks-only bootstrap (optimized for UTXO set reconstruction)
-  cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
+# Function to create default blocks-only config based on instance type
+create_default_blocks_only_config() {
+  local instance_type=$1
+  log_info "Creating optimized config for $instance_type"
+  
+  # Default values
+  local dbcache=4000
+  local maxmempool=300
+  local maxconnections=12
+  local par=8
+  
+  # Tune parameters based on instance type family
+  if [[ "$instance_type" == c6g.* ]]; then
+    # Compute optimized (c6g family)
+    dbcache=3500
+    par=24
+    log_info "Optimizing for compute-optimized instance"
+  elif [[ "$instance_type" == t4g.* ]]; then
+    # Burstable instances have more memory
+    if [[ "$instance_type" == t4g.large ]]; then
+      dbcache=6500
+      par=16
+    elif [[ "$instance_type" == t4g.xlarge ]]; then
+      dbcache=13000
+      par=32
+      maxconnections=20
+    fi
+    log_info "Optimizing for burstable instance with $dbcache MB dbcache"
+  elif [[ "$instance_type" == m6g.* || "$instance_type" == m7g.* ]]; then
+    # General purpose - balance between compute and memory
+    if [[ "$instance_type" == *large ]]; then
+      dbcache=6000
+      par=16
+    elif [[ "$instance_type" == *xlarge ]]; then
+      dbcache=12000
+      par=32
+      maxconnections=24
+    elif [[ "$instance_type" == *2xlarge ]]; then
+      dbcache=24000
+      par=48
+      maxconnections=32
+    fi
+    log_info "Optimizing for general purpose instance with $dbcache MB dbcache"
+  else
+    log_info "Using default parameters for unknown instance type: $instance_type"
+  fi
+  
+  # Create the optimized config file
+  cat << EOF > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf
 # Bitcoin Core configuration - Optimized for blocks-only bootstrap (UTXO reconstruction)
+# Auto-configured for instance type: $instance_type
 
 # Explicitly set the data directory
 datadir=/bitcoin/.bitcoin
@@ -1056,13 +1102,14 @@ txindex=1
 prune=0
 
 # Enhanced Performance for Chainstate Rebuild
-dbcache=8000
-maxmempool=500
-maxconnections=16
+# Auto-tuned for $instance_type
+dbcache=$dbcache
+maxmempool=$maxmempool
+maxconnections=$maxconnections
 blocksonly=1
 mempoolfullrbf=1
 assumevalid=000000000000000000053b17c1c2e1ea8a965a6240ede8ffd0729f7f2e77283e
-par=16
+par=$par
 
 # ZMQ Settings
 zmqpubrawtx=tcp://0.0.0.0:9332
@@ -1070,6 +1117,55 @@ zmqpubhashtx=tcp://0.0.0.0:9332
 zmqpubsequence=tcp://0.0.0.0:9332
 zmqpubrawblock=tcp://0.0.0.0:9333
 EOF
+
+  log_info "Created optimized Bitcoin config with dbcache=$dbcache MB and par=$par"
+}
+
+# Use different configurations for blocks-only bootstrap vs full bootstrap
+if [ "$IS_BLOCKS_ONLY" = "true" ]; then
+  # For blocks-only bootstrap, detect instance type and use appropriate config
+  log_info "Blocks-only bootstrap detected, optimizing configuration based on instance type"
+
+  # Detect instance type
+  INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
+  
+  # Check if config template exists in S3
+  CONFIG_TEMPLATE_PATH=""
+  if [[ "$BITCOIN_SNAPSHOT_PATH" == s3://* ]]; then
+    # Try to get instance-specific config template
+    INSTANCE_TYPE_CONFIG="s3://$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)/$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)/config-templates/bitcoin.conf.$INSTANCE_TYPE"
+    
+    # Check if instance-specific config exists
+    if aws s3 ls "$INSTANCE_TYPE_CONFIG" --no-sign-request &>/dev/null; then
+      CONFIG_TEMPLATE_PATH="$INSTANCE_TYPE_CONFIG"
+      log_info "Found instance-specific config template for $INSTANCE_TYPE"
+    else
+      # Try default blocks-only config
+      DEFAULT_CONFIG="s3://$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f3)/$(echo "$BITCOIN_SNAPSHOT_PATH" | cut -d'/' -f4-)/config-templates/bitcoin.conf.blocks-only"
+      if aws s3 ls "$DEFAULT_CONFIG" --no-sign-request &>/dev/null; then
+        CONFIG_TEMPLATE_PATH="$DEFAULT_CONFIG"
+        log_info "Using default blocks-only config template"
+      fi
+    fi
+  fi
+  
+  # If we found a config template, download and use it
+  if [ -n "$CONFIG_TEMPLATE_PATH" ]; then
+    log_info "Downloading config template from $CONFIG_TEMPLATE_PATH"
+    aws s3 cp "$CONFIG_TEMPLATE_PATH" /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf --no-sign-request
+    
+    # Verify download was successful
+    if [ -f /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf ]; then
+      log_success "Successfully downloaded optimized config"
+    else
+      log_warning "Failed to download config template, using default config"
+      # Generate default optimized config
+      create_default_blocks_only_config "$INSTANCE_TYPE"
+    fi
+  else
+    log_info "No config template found in S3, generating optimized config for $INSTANCE_TYPE"
+    create_default_blocks_only_config "$INSTANCE_TYPE"
+  fi
 else
   # Standard config for full bootstrap
   cat << 'EOF' > /bitcoin-data/bitcoin/.bitcoin/bitcoin.conf

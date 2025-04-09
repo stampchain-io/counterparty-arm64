@@ -10,6 +10,8 @@ This repository provides a complete solution for running Counterparty and Bitcoi
 * Pre-built Docker images for ARM64 architecture
 * Fast deployment using Docker Hub images
 * Optimized storage configuration for AWS ST1 volumes
+* Blocks-only bootstrap option for faster initial setup
+* Auto-optimized configuration for different instance types
 * Version/branch selection for Counterparty and Bitcoin Core
 * AWS CloudFormation template for one-click deployment
 * Maintenance tools for backups and monitoring
@@ -161,7 +163,10 @@ The AWS deployment uses pre-built Docker Hub images to significantly speed up th
    - Go to AWS CloudFormation console
    - Create a new stack
    - Upload the template from `aws/cloudformation/graviton-st1.yml`
-   - Fill in the parameters and launch the stack
+   - Fill in the parameters:
+     - Set `InstanceType` to `c6g.large` for fastest initial sync
+     - For blocks-only bootstrap, use `BitcoinSnapshotPath`: `s3://bitcoin-blockchain-snapshots/uncompressed/blocks-only-bootstrap`
+   - Launch the stack
 
 2. Or use the AWS CLI directly:
    ```bash
@@ -174,6 +179,33 @@ The AWS deployment uses pre-built Docker Hub images to significantly speed up th
        ParameterKey=SubnetId,ParameterValue=subnet-xxxxxxxx \
        ParameterKey=YourIp,ParameterValue=your-ip/32
    ```
+
+## Blocks-Only Bootstrap
+
+This project supports a faster deployment method called "blocks-only bootstrap" that significantly speeds up initial sync time. For full details, see the [Blocks-Only Bootstrap Guide](docs/BLOCKS_ONLY_BOOTSTRAP.md).
+
+### Key Benefits
+
+- **Faster Deployment**: 30-45 minutes for initial sync on c6g.large instances
+- **Lower Bandwidth**: Downloads only block data (~604GB), not chainstate
+- **No Extraction**: Files are synced directly from S3, no tar extraction required
+- **Auto-optimized**: Configures Bitcoin based on your instance type
+
+### How to Use
+
+Simply specify the blocks-only bootstrap path in your CloudFormation parameters:
+
+```
+BitcoinSnapshotPath: s3://bitcoin-blockchain-snapshots/uncompressed/blocks-only-bootstrap
+```
+
+The bootstrap.sh script automatically:
+1. Detects this is a blocks-only bootstrap
+2. Downloads only the blocks directory (not chainstate)
+3. Auto-configures Bitcoin with optimal settings for your instance type
+4. Bitcoin rebuilds the UTXO set (chainstate) during initial sync
+
+For more details and troubleshooting, see the [dedicated documentation](docs/BLOCKS_ONLY_BOOTSTRAP.md).
 
 ## Configuration Options
 

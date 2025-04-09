@@ -65,7 +65,7 @@ NETWORK_PROFILE=${NETWORK_PROFILE:-"mainnet"}
 ENABLE_SNAPSHOTS=${ENABLE_SNAPSHOTS:-"false"}
 GITHUB_TOKEN=${GITHUB_TOKEN:-""}
 STACK_NAME=${STACK_NAME:-"counterparty-arm64"}
-BITCOIN_SNAPSHOT_PATH=${BITCOIN_SNAPSHOT_PATH:-""}
+BITCOIN_SNAPSHOT_PATH=${BITCOIN_SNAPSHOT_PATH:-"s3://bitcoin-blockchain-snapshots/uncompressed"}
 
 # Detect the current public IP address if not provided
 if [ -z "$YOUR_IP" ]; then

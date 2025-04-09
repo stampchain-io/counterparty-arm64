@@ -119,7 +119,7 @@ Parameters:
     
   BitcoinSnapshotPath:
     Type: String
-    Description: "S3 path to Bitcoin blockchain snapshot (s3://bucket/prefix/file.tar.gz)"
+    Description: "S3 path to Bitcoin blockchain data (can be blocks-only bootstrap: s3://bucket/prefix or compressed file: s3://bucket/prefix/file.tar.gz)"
     Default: ""
 
   CreateNewKeyPair:
@@ -173,16 +173,17 @@ Parameters:
   InstanceType:
     Description: EC2 instance type (Graviton-based)
     Type: String
-    Default: t4g.large
+    Default: c6g.large
     AllowedValues:
-      - t4g.large     # Lowest cost, burstable performance (~$24.50/month)
-      - t4g.xlarge    # Burstable, more memory
-      - m6g.large     # Previous gen, consistent performance
-      - m6g.xlarge    # Previous gen, higher memory
+      - c6g.large     # Compute optimized, best for initial sync (~$77/month)
+      - t4g.large     # Lower cost, burstable performance (~$67/month)
+      - t4g.xlarge    # Burstable, more memory (~$134/month)
+      - m6g.large     # Balanced performance (~$80/month)
+      - m6g.xlarge    # Higher memory, balanced
       - m7g.large     # Current gen, good balance (more expensive)
       - m7g.xlarge    # Current gen, higher memory
       - m7g.2xlarge   # Current gen, highest performance
-      - c7g.large     # Compute optimized, good for blockchain (~$28/month)
+      - c7g.large     # Latest compute optimized (most expensive)
       - c7g.xlarge    # Compute optimized, higher performance
     ConstraintDescription: Must be a valid Graviton-based instance type.
   
@@ -196,7 +197,7 @@ Parameters:
   DataVolumeSize:
     Description: Size of the data volume in GB
     Type: Number
-    Default: 1000
+    Default: 700
     MinValue: 500
     MaxValue: 16000
   
