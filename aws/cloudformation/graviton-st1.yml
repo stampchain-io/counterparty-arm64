@@ -121,6 +121,18 @@ Parameters:
     Type: String
     Description: "S3 path to Bitcoin blockchain data (can be blocks-only bootstrap: s3://bucket/prefix or compressed file: s3://bucket/prefix/file.tar.gz)"
     Default: ""
+    
+  S3AccessKeyId:
+    Type: String
+    Description: "Access Key ID with permissions to read from the S3 bucket (if using private bucket)"
+    Default: ""
+    NoEcho: true
+    
+  S3SecretAccessKey:
+    Type: String
+    Description: "Secret Access Key with permissions to read from the S3 bucket (if using private bucket)"
+    Default: ""
+    NoEcho: true
 
   CreateNewKeyPair:
     Description: Create a new key pair for this instance? (Not yet implemented, available in AWS Console)
@@ -532,6 +544,13 @@ Resources:
           # Export the snapshot path if provided
           export BITCOIN_SNAPSHOT_PATH="${BitcoinSnapshotPath}"
           export SNAPSHOT_DEBUG_MODE="true"
+          
+          # Set S3-specific credentials if provided (separate from general AWS credentials)
+          if [ -n "${S3AccessKeyId}" ] && [ -n "${S3SecretAccessKey}" ]; then
+            export S3_ACCESS_KEY_ID="${S3AccessKeyId}"
+            export S3_SECRET_ACCESS_KEY="${S3SecretAccessKey}"
+            echo "[INFO] Using specific S3 credentials for bootstrap download"
+          fi
           
           # Run the bootstrap script with AWS credentials if provided
           /tmp/setup/bootstrap.sh ${BitcoinVersion} ${CounterpartyBranch} ${CounterpartyTag} ${NetworkProfile} ${GitHubToken} "${AwsAccessKey}" "${AwsSecretKey}" 2>&1 | tee -a /tmp/download_logs/bootstrap.log

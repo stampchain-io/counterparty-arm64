@@ -326,7 +326,20 @@ EOF
     
     # Determine if we should use authentication
     USE_AUTH_FLAG=""
-    if [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
+    # Check for S3-specific credentials first
+    if [ -n "$S3_ACCESS_KEY_ID" ] && [ -n "$S3_SECRET_ACCESS_KEY" ]; then
+      echo "[INFO] Using specific S3 credentials for bucket access"
+      # Create temporary AWS credentials file just for the S3 operations
+      mkdir -p ~/.aws
+      cat > ~/.aws/s3_credentials << EOF
+[default]
+aws_access_key_id = $S3_ACCESS_KEY_ID
+aws_secret_access_key = $S3_SECRET_ACCESS_KEY
+EOF
+      # Use these credentials for the S3 operations
+      export AWS_SHARED_CREDENTIALS_FILE=~/.aws/s3_credentials
+    # Fall back to general AWS credentials if available
+    elif [ -n "$AWS_ACCESS_KEY_ID" ] && [ -n "$AWS_SECRET_ACCESS_KEY" ] && [[ "$FORCE_NO_SIGN_REQUEST" != "true" ]]; then
       echo "[INFO] Using AWS credentials for S3 sync"
     else
       echo "[INFO] Using anonymous access for S3 sync (--no-sign-request)"
