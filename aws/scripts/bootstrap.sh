@@ -340,7 +340,34 @@ EOF
     
     if [ $BLOCKS_SYNC_RESULT -ne 0 ]; then
       echo "[ERROR] Blocks sync failed with exit code: $BLOCKS_SYNC_RESULT"
-      echo "[WARNING] Bitcoin may still be able to use partial data, continuing..."
+      echo "[WARNING] Attempting direct file downloads as a fallback..."
+      
+      # Fallback to direct file downloads
+      mkdir -p /bitcoin-data/bitcoin/blocks
+      MAX_BLOCK_FILES=100  # Start with a reasonable number
+      
+      for i in $(seq -f "%05g" 0 $MAX_BLOCK_FILES); do
+        echo "[INFO] Trying to download blk${i}.dat..."
+        if aws s3 cp "${BITCOIN_SNAPSHOT_PATH}/blocks/blk${i}.dat" "/bitcoin-data/bitcoin/blocks/" $USE_AUTH_FLAG --only-show-errors; then
+          echo "[SUCCESS] Downloaded blk${i}.dat"
+          
+          # Also try to download corresponding rev file
+          if aws s3 cp "${BITCOIN_SNAPSHOT_PATH}/blocks/rev${i}.dat" "/bitcoin-data/bitcoin/blocks/" $USE_AUTH_FLAG --only-show-errors; then
+            echo "[SUCCESS] Downloaded rev${i}.dat"
+          fi
+        else
+          # If we fail to download this file, assume we've reached the end
+          echo "[INFO] No more block files found or access denied at blk${i}.dat"
+          break
+        fi
+      done
+      
+      # Check if we got at least some block files
+      if [ -f "/bitcoin-data/bitcoin/blocks/blk00000.dat" ]; then
+        echo "[SUCCESS] Successfully downloaded some block files directly"
+      else
+        echo "[WARNING] Failed to download any block files. Bitcoin will sync from the network."
+      fi
     else
       echo "[SUCCESS] Blocks data synced successfully from S3"
     fi
