@@ -1342,3 +1342,8 @@ echo "Deployment completed. Bitcoin and Counterparty services are now starting."
 echo "Check status with: ~/check-sync-status.sh"
 echo "Deploy time: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
 echo "Build version: bootstrap-$(date -u +%s)"
+
+# Close the if statement for Bitcoin_SNAPSHOT_PATH check on line 132
+fi
+
+# End of bootstrap script
