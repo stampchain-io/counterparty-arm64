@@ -329,11 +329,13 @@ The workflow automatically uploads template files as artifacts and updates the D
 
 | Image | Tags | Status | Size |
 |-------|------|--------|------|
-| `xcparty/bitcoind-arm64` | No tags found | ❌ Not available | - |
-| `xcparty/counterparty-core-arm64` | No tags found | ❌ Not available | - |
+| `xcparty/bitcoind-arm64` | `26.0` | ✅ Available | ~76.8 MB |
+| `xcparty/bitcoind-arm64` | `cache` | ✅ Available | ~26.0 MB |
+| `xcparty/bitcoind-arm64` | `latest` | ✅ Available | ~76.9 MB |
+| `xcparty/counterparty-core-arm64` | `develop` | ✅ Available | ~108.3 MB |
 
 
-> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: 2025-09-25 00:21 UTC
+> Note: The Counterparty Core image build takes approximately 1 hour due to ARM64 cross-compilation. Last updated: 2025-09-26 00:21 UTC
 ## Directory Structure
 
 ```
